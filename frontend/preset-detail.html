@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pic2Preset - Preset Details</title>
+    <link rel="stylesheet" href="style.css">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; 
+        connect-src 'self' https://accounts.google.com https://*.googleapis.com http://localhost:8000; 
+        script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.gstatic.com https://accounts.google.com https://cdn.jsdelivr.net https://apis.google.com; 
+        style-src 'self' 'unsafe-inline' https://accounts.google.com https://fonts.googleapis.com https://cdnjs.cloudflare.com; 
+        font-src 'self' data: https://fonts.gstatic.com https://*.gstatic.com https://cdnjs.cloudflare.com; 
+        frame-src https://accounts.google.com; 
+        img-src 'self' http://localhost:8000 https://*.googleusercontent.com https://accounts.google.com data: https://*.supabase.co;">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" integrity="sha512-9usAa10IRO0HhonpyAIVpjrylPvoDwiPUiKdWk5t3PyolY1cOd4DSE0Ga+ri4AuTroPR5aQvXU9xC6qOPnzFeg==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+</head>
+<body>
+    <header>
+        <nav>
+            <div class="logo">
+                <i class="fas fa-camera-retro"></i> Pic2Preset
+            </div>
+            <div class="nav-links">
+                <a href="index.html">Home</a>
+                <a href="dashboard.html">Dashboard</a>
+            </div>
+            <div id="auth-section">
+                <button onclick="signOut()" style="display:none;"><i class="fas fa-sign-out-alt"></i> Sign out</button>
+            </div>
+        </nav>
+    </header>
+
+    <main>
+        <section id="preset-detail">
+            <div class="detail-header">
+                <a href="dashboard.html" class="back-link">
+                    <i class="fas fa-arrow-left"></i> Back to Dashboard
+                </a>
+                <h1>Preset Details</h1>
+            </div>
+            
+            <div id="preset-content" class="preset-content">
+                <!-- Preset details will be loaded here -->
+                <div class="loading-preset">
+                    <i class="fas fa-spinner fa-spin"></i>
+                    <p>Loading preset details...</p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <p>&copy; 2024 Pic2Preset. All rights reserved.</p>
+    </footer>
+
+    <script src="https://accounts.google.com/gsi/client"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jwt-decode@3.1.2/build/jwt-decode.min.js"></script>
+    <script src="script.js"></script>
+</body>
+</html> 

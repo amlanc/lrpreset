@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pic2Preset - Image to Lightroom Preset Converter</title>
+    <link rel="stylesheet" href="style.css">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; 
+        connect-src 'self' https://accounts.google.com https://*.googleapis.com http://localhost:8000; 
+        script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.gstatic.com https://accounts.google.com https://cdn.jsdelivr.net https://apis.google.com; 
+        style-src 'self' 'unsafe-inline' https://accounts.google.com https://fonts.googleapis.com https://cdnjs.cloudflare.com; 
+        font-src 'self' data: https://fonts.gstatic.com https://*.gstatic.com https://cdnjs.cloudflare.com; 
+        frame-src https://accounts.google.com; 
+        img-src 'self' http://localhost:8000 https://*.googleusercontent.com https://accounts.google.com data: https://*.supabase.co;">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" integrity="sha512-9usAa10IRO0HhonpyAIVpjrylPvoDwiPUiKdWk5t3PyolY1cOd4DSE0Ga+ri4AuTroPR5aQvXU9xC6qOPnzFeg==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+</head>
+<body>
+    <header>
+        <nav>
+            <div class="logo">
+                <i class="fas fa-camera-retro"></i> Pic2Preset
+            </div>
+            <div class="nav-links">
+                <a href="index.html" class="active">Home</a>
+                <a href="dashboard.html">Dashboard</a>
+            </div>
+            <div id="auth-section">
+                <button onclick="signOut()" style="display:none;"><i class="fas fa-sign-out-alt"></i> Sign out</button>
+            </div>
+        </nav>
+    </header>
+
+    <main>
+        <section id="hero">
+            <div class="hero-content">
+                <h1>Create Stunning Lightroom Presets from your images</h1>
+                <p>Effortlessly convert your images into professional-looking lightroom presets and apply to any other photos for stunning results.</p>
+                
+                <div class="upload-container">
+                    <div class="upload-controls">
+                        <input type="file" id="imageUpload" accept="image/*">
+                        <label for="imageUpload" class="upload-button">
+                            <i class="fas fa-upload"></i> Upload Image
+                        </label>
+                        <button class="generate-button" id="createPresetBtn">Create Preset</button>
+                    </div>
+                    
+                    <div class="upload-preview" id="uploadPreview">
+                        <div class="preview-placeholder">
+                            <i class="fas fa-image"></i>
+                            <p>Image preview will appear here</p>
+                        </div>
+                        <div class="preview-image-container" style="display: none;">
+                            <img id="previewImage" src="" alt="Preview">
+                        </div>
+                        <div class="preview-details" style="display: none;">
+                            <span id="fileNameDisplay"></span>
+                            <span id="fileSizeDisplay"></span>
+                        </div>
+                    </div>
+                    
+                    <div id="upload-status" style="display:none;">
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="uploadProgress"></div>
+                        </div>
+                        <p id="statusText">Processing your image...</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="preset-preview" style="display:none;">
+            <div class="preset-preview-container">
+                <h2>Your AI-Generated Preset</h2>
+                
+                <div class="preset-content">
+                    <div class="preset-tabs-container">
+                        <div class="preset-tabs">
+                            <button class="preset-tab active" data-tab="basic">Basic Adjustments</button>
+                            <button class="preset-tab" data-tab="color">Color Balance</button>
+                            <button class="preset-tab" data-tab="detail">Detail</button>
+                            <button class="preset-tab" data-tab="effects">Effects</button>
+                        </div>
+                        
+                        <div class="preset-tab-content active" id="basic-tab">
+                            <div class="adjustments-table-container">
+                                <table class="adjustments-table">
+                                    <tbody id="basic-adjustments">
+                                        <!-- Basic adjustments will be loaded here -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        
+                        <div class="preset-tab-content" id="color-tab">
+                            <div class="adjustments-table-container">
+                                <table class="adjustments-table">
+                                    <tbody id="color-adjustments">
+                                        <!-- Color adjustments will be loaded here -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        
+                        <div class="preset-tab-content" id="detail-tab">
+                            <div class="adjustments-table-container">
+                                <table class="adjustments-table">
+                                    <tbody id="detail-adjustments">
+                                        <!-- Detail adjustments will be loaded here -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        
+                        <div class="preset-tab-content" id="effects-tab">
+                            <div class="adjustments-table-container">
+                                <table class="adjustments-table">
+                                    <tbody id="effects-adjustments">
+                                        <!-- Effects adjustments will be loaded here -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="preset-image-container">
+                        <img id="preset-preview-image" src="" alt="Preset Preview">
+                    </div>
+                </div>
+                
+                <div class="purchase-container">
+                    <button id="download-button" class="download-button">
+                        <i class="fas fa-download"></i> Download Preset
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <section id="payment-success" style="display:none;">
+            <div class="success-content">
+                <i class="fas fa-check-circle success-icon"></i>
+                <h2>Payment Successful!</h2>
+                <p>Your preset is ready to download.</p>
+            </div>
+        </section>
+
+        <section id="download" style="display:none;">
+            <div class="download-content">
+                <h2>Your Lightroom Preset is Ready!</h2>
+                <a id="xmpDownloadLink" href="#" class="download-link">
+                    <i class="fas fa-download"></i> Download Preset
+                </a>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <p>&copy; 2024 Pic2Preset. All rights reserved.</p>
+    </footer>
+
+    <script src="https://accounts.google.com/gsi/client"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jwt-decode@3.1.2/build/jwt-decode.min.js"></script>
+    <script src="script.js"></script>
+</body>
+</html> 

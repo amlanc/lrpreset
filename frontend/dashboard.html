@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pic2Preset - Your Presets Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; 
+        connect-src 'self' https://accounts.google.com https://*.googleapis.com http://localhost:8000; 
+        script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.gstatic.com https://accounts.google.com https://cdn.jsdelivr.net https://apis.google.com; 
+        style-src 'self' 'unsafe-inline' https://accounts.google.com https://fonts.googleapis.com https://cdnjs.cloudflare.com; 
+        font-src 'self' data: https://fonts.gstatic.com https://*.gstatic.com https://cdnjs.cloudflare.com; 
+        frame-src https://accounts.google.com; 
+        img-src 'self' http://localhost:8000 https://*.googleusercontent.com https://accounts.google.com data: https://*.supabase.co;">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" integrity="sha512-9usAa10IRO0HhonpyAIVpjrylPvoDwiPUiKdWk5t3PyolY1cOd4DSE0Ga+ri4AuTroPR5aQvXU9xC6qOPnzFeg==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+</head>
+<body>
+    <header>
+        <nav>
+            <div class="logo">
+                <i class="fas fa-camera-retro"></i> Pic2Preset
+            </div>
+            <div class="nav-links">
+                <a href="index.html">Home</a>
+                <a href="dashboard.html" class="active">Dashboard</a>
+            </div>
+            <div id="auth-section">
+                <button onclick="signOut()" style="display:none;"><i class="fas fa-sign-out-alt"></i> Sign out</button>
+            </div>
+        </nav>
+    </header>
+
+    <main>
+        <section id="dashboard">
+            <div class="dashboard-header">
+                <h1>Your Presets</h1>
+                <a href="index.html" class="create-button">
+                    <i class="fas fa-plus"></i> Create New Preset
+                </a>
+            </div>
+            
+            <div class="dashboard-content">
+                <div class="presets-table-container">
+                    <table id="presets-table" class="presets-table">
+                        <thead>
+                            <tr>
+                                <th>Image</th>
+                                <th>Preset Name</th>
+                                <th>Created</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="presets-table-body">
+                            <!-- Presets will be loaded here -->
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div id="no-presets" class="no-presets" style="display:none;">
+                    <i class="fas fa-camera"></i>
+                    <p>You haven't created any presets yet.</p>
+                    <a href="index.html" class="create-preset-link">Create Your First Preset</a>
+                </div>
+                
+                <div id="loading-presets" class="loading-presets">
+                    <i class="fas fa-spinner fa-spin"></i>
+                    <p>Loading your presets...</p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <p>&copy; 2024 Pic2Preset. All rights reserved.</p>
+    </footer>
+
+    <script src="https://accounts.google.com/gsi/client"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jwt-decode@3.1.2/build/jwt-decode.min.js"></script>
+    <script src="script.js"></script>
+</body>
+</html> 
