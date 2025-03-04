@@ -4,14 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pic2Preset - Image to Lightroom Preset Converter</title>
+    <link rel="icon" type="image/x-icon" href="static/favicon.ico">
     <link rel="stylesheet" href="style.css">
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; 
-        connect-src 'self' https://accounts.google.com https://*.googleapis.com http://localhost:8000; 
+        connect-src 'self' https://accounts.google.com https://*.googleapis.com https://*.googleusercontent.com; 
         script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.gstatic.com https://accounts.google.com https://cdn.jsdelivr.net https://apis.google.com; 
         style-src 'self' 'unsafe-inline' https://accounts.google.com https://fonts.googleapis.com https://cdnjs.cloudflare.com; 
         font-src 'self' data: https://fonts.gstatic.com https://*.gstatic.com https://cdnjs.cloudflare.com; 
         frame-src https://accounts.google.com; 
-        img-src 'self' http://localhost:8000 https://*.googleusercontent.com https://accounts.google.com data: https://*.supabase.co;">
+        img-src * data:;">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" integrity="sha512-9usAa10IRO0HhonpyAIVpjrylPvoDwiPUiKdWk5t3PyolY1cOd4DSE0Ga+ri4AuTroPR5aQvXU9xC6qOPnzFeg==" crossorigin="anonymous" referrerpolicy="no-referrer" />
 </head>
 <body>
@@ -24,9 +25,7 @@
                 <a href="index.html" class="active">Home</a>
                 <a href="dashboard.html">Dashboard</a>
             </div>
-            <div id="auth-section">
-                <button onclick="signOut()" style="display:none;"><i class="fas fa-sign-out-alt"></i> Sign out</button>
-            </div>
+            <div id="auth-section"></div>
         </nav>
     </header>
 
@@ -71,7 +70,7 @@
 
         <section id="preset-preview" style="display:none;">
             <div class="preset-preview-container">
-                <h2>Your AI-Generated Preset</h2>
+                <h2>Extracted metadata to generate Preset</h2>
                 
                 <div class="preset-content">
                     <div class="preset-tabs-container">
@@ -162,4 +161,4 @@
     <script src="https://cdn.jsdelivr.net/npm/jwt-decode@3.1.2/build/jwt-decode.min.js"></script>
     <script src="script.js"></script>
 </body>
-</html> 
+</html>

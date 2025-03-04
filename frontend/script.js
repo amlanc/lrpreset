@@ -1,11 +1,8 @@
 let googleUser = null;
 
 function updateUI(isSignedIn, profile) {
-    console.log("[UI] Updating UI state:", { isSignedIn, profile: profile || 'none' });
-    
     const authSection = document.getElementById('auth-section');
     if (!authSection) {
-        console.error("[UI] Auth section not found in DOM");
         return;
     }
     
@@ -13,8 +10,6 @@ function updateUI(isSignedIn, profile) {
     authSection.innerHTML = '';
     
     if (isSignedIn && profile) {
-        console.log("[UI] User is signed in, updating UI with profile");
-        
         // Create user info container
         const userInfo = document.createElement('div');
         userInfo.id = 'user-info';
@@ -22,11 +17,90 @@ function updateUI(isSignedIn, profile) {
         
         // Add user avatar if available
         if (profile.picture) {
-            const avatar = document.createElement('img');
-            avatar.src = profile.picture;
-            avatar.alt = profile.name || 'User';
-            avatar.className = 'user-avatar';
-            userInfo.appendChild(avatar);
+            // Create avatar container
+            const avatarContainer = document.createElement('div');
+            avatarContainer.className = 'user-avatar';
+            
+            // Check if we have a cached version of the image
+            const cachedImage = localStorage.getItem('cachedProfileImage');
+            const cachedImageUserId = localStorage.getItem('cachedProfileImageUserId');
+            
+            // Only use cached image if it belongs to the current user
+            if (cachedImage && cachedImage.startsWith('data:image') && cachedImageUserId === profile.sub) {
+                console.log('Using cached profile image');
+                // Use cached image if available
+                const avatar = document.createElement('img');
+                avatar.src = cachedImage;
+                avatar.alt = profile.name || 'User';
+                avatarContainer.appendChild(avatar);
+            } else {
+                console.log('Loading profile image from Google');
+                // Create avatar with initials first (as immediate fallback)
+                avatarContainer.textContent = (profile.name || 'U')[0].toUpperCase();
+                avatarContainer.style.backgroundColor = '#4285F4'; // Google blue
+                avatarContainer.style.color = 'white';
+                avatarContainer.style.fontWeight = 'bold';
+                avatarContainer.style.fontSize = '16px';
+                
+                // Try to load the actual image in the background
+                const avatar = new Image();
+                avatar.crossOrigin = 'anonymous';
+                
+                // Add error handling for image
+                avatar.onerror = function() {
+                    console.log('Failed to load profile image, using initials');
+                    // Keep the initials that we already set up
+                };
+                
+                // Add load handler to cache the image
+                avatar.onload = function() {
+                    try {
+                        // Create a canvas to convert the image to a data URL
+                        const canvas = document.createElement('canvas');
+                        canvas.width = avatar.width;
+                        canvas.height = avatar.height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(avatar, 0, 0);
+                        
+                        // Cache the image as a data URL
+                        const dataUrl = canvas.toDataURL('image/png');
+                        localStorage.setItem('cachedProfileImage', dataUrl);
+                        localStorage.setItem('cachedProfileImageUserId', profile.sub);
+                        
+                        // Replace the initials with the actual image
+                        avatarContainer.textContent = '';
+                        const displayAvatar = document.createElement('img');
+                        displayAvatar.src = dataUrl;
+                        displayAvatar.alt = profile.name || 'User';
+                        avatarContainer.appendChild(displayAvatar);
+                        
+                        console.log('Profile image cached successfully');
+                    } catch (e) {
+                        console.error("Failed to cache profile image:", e);
+                    }
+                };
+                
+                // Use our proxy to avoid rate limiting
+                const originalImageUrl = profile.picture;
+                const proxyImageUrl = `/proxy/profile-image?url=${encodeURIComponent(originalImageUrl)}`;
+                console.log('Using proxy for profile image:', proxyImageUrl);
+                
+                // Set the source last to trigger loading
+                avatar.src = proxyImageUrl;
+            }
+            
+            // Add container to user info
+            userInfo.appendChild(avatarContainer);
+        } else {
+            // Create avatar container with initials if no picture
+            const avatarContainer = document.createElement('div');
+            avatarContainer.className = 'user-avatar';
+            avatarContainer.textContent = (profile.name || 'U')[0].toUpperCase();
+            avatarContainer.style.backgroundColor = '#4285F4'; // Google blue
+            avatarContainer.style.color = 'white';
+            avatarContainer.style.fontWeight = 'bold';
+            avatarContainer.style.fontSize = '16px';
+            userInfo.appendChild(avatarContainer);
         }
         
         // Add user name
@@ -87,17 +161,13 @@ function updateUI(isSignedIn, profile) {
             }
         });
     } else {
-        console.log("[UI] User is not signed in, showing sign-in button");
         createSignInButton();
     }
 }
 
 function createSignInButton() {
-    console.log("[Auth] Creating sign-in button");
-    
     const authSection = document.getElementById('auth-section');
     if (!authSection) {
-        console.error("[Auth] Auth section not found in DOM");
         return;
     }
     
@@ -116,7 +186,7 @@ function createSignInButton() {
     
     // Create Google logo
     const googleLogo = document.createElement('img');
-    googleLogo.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTgiIGhlaWdodD0iMTgiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGcgZmlsbD0ibm9uZSIgZmlsbC1ydWxlPSJldmVub2RkIj48cGF0aCBkPSJNMTcuNiA5LjJsLS4xLTEuOEg5djMuNGg0LjhDMTMuNiAxMiAxMyAxMyAxMiAxMy42djIuMmgzYTguOCA4LjggMCAwIDAgMi42LTYuNnoiIGZpbGw9IiM0Mjg1RjQiIGZpbGwtcnVsZT0ibm9uemVybyIvPjxwYXRoIGQ9Ik05IDE4YzIuNCAwIDQuNS0uOCA2LTIuMmwtMy0yLjJhNS40IDUuNCAwIDAgMS04LTIuOUgxVjEzYTkgOSAwIDAgMCA4IDV6IiBmaWxsPSIjMzRBODUzIiBmaWxsLXJ1bGU9Im5vbnplcm8iLz48cGF0aCBkPSJNNCAxMC43YTUuNCA1LjQgMCAwIDEgMC0zLjRWNUgxYTkgOSAwIDAgMCAwIDhsMy0yLjN6IiBmaWxsPSIjRkJCQzA1IiBmaWxsLXJ1bGU9Im5vbnplcm8iLz48cGF0aCBkPSJNOSAzLjZjMS4zIDAgMi41LjQgMy40IDEuM0wxNSAyLjNBOSA5IDAgMCAwIDEgNWwzIDIuNGE1LjQgNS40IDAgMCAxIDUtMy43eiIgZmlsbD0iI0VBNDMzNSIgZmlsbC1ydWxlPSJub256ZXJvIi8+PHBhdGggZD0iTTAgMGgxOHYxOEgweiIvPjwvZz48L3N2Zz4=';
+    googleLogo.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTgiIGhlaWdodD0iMTgiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGcgZmlsbD0ibm9uZSIgZmlsbC1ydWxlPSJldmVub2RkIj48cGF0aCBkPSJNMTcuNiA5LjJsLS4xLTEuOEg5djMuNGg0LjhDMTMuNiAxMiAxMyAxMyAxMiAxMy42djIuMmgzYTguOCA4LjggMCAwIDAgMi42LTYuNnoiIGZpbGw9IiM0Mjg1RjQiIGZpbGwtcnVsZT0ibm9uemVybyIvPjxwYXRoIGQ9Ik05IDE4YzIuNCAwIDQuNS0uOCA2LTIuMmwtMy0yLjJhNS40IDUuNCAwIDAgMS04LTIuOUgxVjEzYTkgOSAwIDAgMCA4IDV6IiBmaWxsPSIjMzRBODUzIiBmaWxsLXJ1bGU9Im5vbnplcm8iLz48cGF0aCBkPSJNNCAxMC43YTUuNCA1LjQgMCAwIDEgMC0zLjRWNUgxYTkgOSAwIDAgMCAwIDhsMy0yLjN6IiBmaWxsPSIjRkJCQzA1IiBmaWxsLXJ1bGU9Im5vbnplcm8iLz48cGF0aCBkPSJNNCAzLjZjMS4zIDAgMi41LjQgMy40IDEuM0wxNSAyLjNBOSA5IDAgMCAwIDEgNWwzIDIuNGE1LjQgNS40IDAgMCAxIDUtMy43eiIgZmlsbD0iI0VBNDMzNSIgZmlsbC1ydWxlPSJub256ZXJvIi8+PHBhdGggZD0iTTAgMGgxOHYxOEgweiIvPjwvZz48L3N2Zz4=';
     googleLogo.alt = 'Google logo';
     googleLogo.className = 'google-logo';
     
@@ -135,25 +205,27 @@ function createSignInButton() {
 // Add this function to get configuration
 async function getConfig() {
     try {
-        const response = await fetch('http://localhost:8000/config');
+        // Use relative path for config fetch
+        console.log('Fetching config from: /config');
+        const response = await fetch('/config');
+        
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
+        
         const config = await response.json();
+        console.log('Config loaded successfully:', config);
         return config;
     } catch (error) {
-        console.error('[Config] Error fetching config:', error);
+        console.error('Error fetching config:', error);
         return null;
     }
 }
 
 // Update initiateGoogleSignIn to use the config
 async function initiateGoogleSignIn() {
-    console.log("[Auth] Initiating Google Sign-In flow");
-    
     const config = await getConfig();
     if (!config || !config.googleClientId) {
-        console.error("[Auth] Missing Google Client ID");
         return;
     }
     
@@ -166,7 +238,7 @@ async function initiateGoogleSignIn() {
     }
     
     const clientId = config.googleClientId;
-    const redirectUri = encodeURIComponent('http://localhost:8001/');
+    const redirectUri = encodeURIComponent(window.location.origin + '/');
     // Update scope to match exactly what Google expects
     const scope = encodeURIComponent('https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email openid');
     const responseType = 'token id_token';
@@ -183,8 +255,6 @@ async function initiateGoogleSignIn() {
 
 // Callback function for Google Sign-In
 function handleGoogleSignIn(response) {
-    console.log("[Auth] Handling Google Sign-In response");
-    
     if (response.credential) {
         // Decode the credential
         const decodedToken = jwt_decode(response.credential);
@@ -199,22 +269,20 @@ function handleGoogleSignIn(response) {
             picture: decodedToken.picture,
             sub: decodedToken.sub
         });
-        
-        console.log("[Auth] Sign-in successful");
     } else {
-        console.error("[Auth] No credential received");
         updateUI(false);
     }
 }
 
 // Update sign out to use Google's sign-out
 function signOut() {
-    console.log("[Auth] User signing out");
-    
     google.accounts.id.disableAutoSelect();
     
     // Clear tokens from localStorage
     localStorage.removeItem('googleToken');
+    localStorage.removeItem('googleAccessToken');
+    localStorage.removeItem('cachedProfileImage'); // Clear cached profile image
+    localStorage.removeItem('cachedProfileImageUserId'); // Clear cached profile image user ID
     
     // Update UI
     updateUI(false);
@@ -227,8 +295,6 @@ function signOut() {
 
 // Initialize Google Sign-In on page load
 function startGoogleAuth() {
-    console.log("[Auth] Starting Google Auth");
-    
     // Initialize Google Identity Services
     google.accounts.id.initialize({
         client_id: '705829908462-kem339aaui68vt1t4jo2ee10ph13lai3.apps.googleusercontent.com',
@@ -245,15 +311,12 @@ function startGoogleAuth() {
             const currentTime = Math.floor(Date.now() / 1000);
             
             if (decodedToken.exp && decodedToken.exp > currentTime) {
-                console.log("[Auth] User already authenticated with valid token");
                 updateUI(true, decodedToken);
                 return;
             } else {
-                console.log("[Auth] Token expired, removing from storage");
                 localStorage.removeItem('googleToken');
             }
         } catch (error) {
-            console.error("[Auth] Error with stored token:", error);
             localStorage.removeItem('googleToken');
         }
     }
@@ -262,67 +325,59 @@ function startGoogleAuth() {
     createSignInButton();
 }
 
-// Document ready function to initialize all event handlers
-document.addEventListener('DOMContentLoaded', function() {
-    console.log("[App] Document loaded, initializing app...");
-    
-    // Initialize image upload functionality
-    initializeImageUpload();
-    
-    // Initialize Google Auth
-    startGoogleAuth();
-    
-    // Check if we're on the dashboard page
-    if (document.getElementById('presets-table-body')) {
-        loadUserPresets();
-    }
-    
-    // Check if we're on the preset detail page
-    if (document.getElementById('preset-content')) {
-        loadPresetDetails();
-    }
-    
-    // Debug elements
-    debugElements();
-    
-    // Check for authentication from URL parameters (after Google redirect)
-    checkUrlForAuthResponse();
-});
-
 // Function to check URL for authentication response
 function checkUrlForAuthResponse() {
-    console.log("[Auth] Checking URL for auth response");
-    
     // Check if we have a hash fragment in the URL (from Google redirect)
     if (window.location.hash) {
-        console.log("[Auth] Found hash fragment in URL");
-        
         // Parse the hash fragment
         const params = new URLSearchParams(window.location.hash.substring(1));
         
         // Check if we have an ID token
         if (params.has('id_token')) {
-            console.log("[Auth] Found ID token in URL");
-            
             const idToken = params.get('id_token');
             const accessToken = params.get('access_token');
             
             // Verify the token
             try {
                 const decodedToken = jwt_decode(idToken);
-                console.log("[Auth] Decoded token:", decodedToken);
                 
                 // Store the tokens
                 localStorage.setItem('googleToken', idToken);
                 localStorage.setItem('googleAccessToken', accessToken);
                 
-                // Update the UI
-                updateUI(true, decodedToken);
+                // Update the UI with user profile including picture
+                updateUI(true, {
+                    name: decodedToken.name,
+                    email: decodedToken.email,
+                    picture: decodedToken.picture,  // Make sure to include the picture
+                    sub: decodedToken.sub
+                });
                 
                 // Clean up the URL
                 window.history.replaceState({}, document.title, window.location.pathname);
             } catch (error) {
-                console.error("[Auth] Error decoding token:", error);
+                console.error("Error decoding token:", error);
+            }
+        }
+    } else {
+        // Check if we have a stored token
+        const storedToken = localStorage.getItem('googleToken');
+        if (storedToken) {
+            try {
+                const decodedToken = jwt_decode(storedToken);
+                // Update UI with stored token data
+                updateUI(true, {
+                    name: decodedToken.name,
+                    email: decodedToken.email,
+                    picture: decodedToken.picture,  // Make sure to include the picture
+                    sub: decodedToken.sub
+                });
+            } catch (error) {
+                console.error("Error decoding stored token:", error);
+                // Clear invalid token
+                localStorage.removeItem('googleToken');
+                localStorage.removeItem('googleAccessToken');
+                updateUI(false);
             }
         }
     }
@@ -330,15 +385,10 @@ function checkUrlForAuthResponse() {
 
 // Function to initialize image upload functionality
 function initializeImageUpload() {
-    console.log("[Upload] Initializing image upload...");
-    
     // Set up file input change event
     const imageUpload = document.getElementById('imageUpload');
     if (imageUpload) {
-        console.log("[Upload] Found image upload input, setting up event listener");
-        
         imageUpload.addEventListener('change', function(event) {
-            console.log("[Upload] File input change detected");
             handleFileSelect(event);
         });
     } else {
@@ -348,8 +398,6 @@ function initializeImageUpload() {
     // Set up create preset button click event
     const createPresetBtn = document.getElementById('createPresetBtn');
     if (createPresetBtn) {
-        console.log("[Upload] Found create preset button, setting up event listener");
-        
         createPresetBtn.addEventListener('click', handleCreatePresetClick);
     } else {
         console.warn("[Upload] Create preset button not found");
@@ -358,8 +406,6 @@ function initializeImageUpload() {
 
 // Function to handle file selection
 function handleFileSelect(event) {
-    console.log("[Upload] File input change detected");
-    
     const file = event.target.files[0];
     if (!file) {
         console.warn("[Upload] No file selected");
@@ -408,8 +454,6 @@ function handleFileSelect(event) {
         // Show image container and hide placeholder
         previewContainer.style.display = 'block';
         previewPlaceholder.style.display = 'none';
-        
-        // We're not showing the details anymore
     };
     
     reader.readAsDataURL(file);
@@ -421,16 +465,83 @@ function handleCreatePresetClick() {
     
     // Check if an image is selected
     const previewImage = document.getElementById('previewImage');
-    const previewContainer = document.querySelector('.preview-image-container');
-    
-    // Check if the image is displayed (meaning an image is selected)
-    if (previewImage && previewImage.src && previewContainer.style.display !== 'none') {
-        console.log("[Upload] Image is selected, proceeding with preset creation");
-        uploadImage(); // Call the existing uploadImage function with no parameters
-    } else {
-        console.log("[Upload] No image selected, showing alert");
-        alert("Please select an image first.");
+    if (!previewImage || !previewImage.src || previewImage.src === '') {
+        alert('Please upload an image first');
+        return;
     }
+    
+    // Get the image file
+    const imageUpload = document.getElementById('imageUpload');
+    if (!imageUpload || !imageUpload.files || !imageUpload.files[0]) {
+        alert('Please upload an image first');
+        return;
+    }
+    
+    // Create a FormData object to send the file
+    const formData = new FormData();
+    formData.append('image', imageUpload.files[0]);
+    
+    // Add user ID to the form data
+    try {
+        // Get the token from localStorage
+        const token = localStorage.getItem('googleToken');
+        
+        if (!token) {
+            console.log("No authentication token found, using anonymous user");
+            formData.append('user_id', 'anonymous');
+        } else {
+            const decodedToken = jwt_decode(token);
+            formData.append('user_id', decodedToken.sub);
+        }
+    } catch (error) {
+        console.error("Error decoding token:", error);
+        // Continue with anonymous user
+        formData.append('user_id', 'anonymous');
+    }
+    
+    // Show progress container
+    const progressContainer = document.getElementById('progressContainer');
+    if (progressContainer) {
+        progressContainer.style.display = 'flex';
+    }
+    
+    // Update progress
+    updateUploadProgress(20, 'Uploading image...');
+    
+    // Send to backend
+    fetch('/upload', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        // Update progress to show upload complete and AI processing started
+        updateUploadProgress(40, 'Image uploaded, processing with AI...');
+        
+        return response.json();
+    })
+    .then(data => {
+        // Handle successful upload
+        updateUploadProgress(60, 'AI processing complete, generating preset...');
+        
+        // Check if we have a preset ID
+        if (data && data.preset_id) {
+            // Wait a bit to show progress, then redirect to preset page
+            setTimeout(() => {
+                updateUploadProgress(100, 'Preset created successfully!');
+                
+                // Redirect to preset page
+                setTimeout(() => {
+                    window.location.href = `${window.location.origin}/preset.html?id=${data.preset_id}`;
+                }, 500);
+            }, 1000);
+        } else {
+            console.log("[Upload] No image selected, showing alert");
+            alert("Please select an image first.");
+        }
+    })
 }
 
 // Function to upload image
@@ -445,6 +556,20 @@ function uploadImage() {
     }
     
     const file = fileInput.files[0];
+    
+    // Get user ID (use anonymous if not logged in)
+    const token = localStorage.getItem('googleToken');
+    let userId = 'anonymous';
+    
+    if (token) {
+        try {
+            const decoded = jwt_decode(token);
+            userId = decoded.sub;
+        } catch (e) {
+            console.error("[Auth] Error decoding token:", e);
+        }
+    }
+    
     console.log("[Upload] Sending request to backend:", {
         fileName: file.name,
         fileType: file.type,
@@ -472,32 +597,19 @@ function uploadImage() {
     // Create form data
     const formData = new FormData();
     formData.append('image', file);
-    
-    // Get user ID (use anonymous if not logged in)
-    const token = localStorage.getItem('googleToken');
-    let userId = 'anonymous';
-    
-    if (token) {
-        try {
-            const decoded = jwt_decode(token);
-            userId = decoded.sub;
-            formData.append('user_id', userId);
-        } catch (e) {
-            console.error("[Auth] Error decoding token:", e);
-        }
-    }
+    formData.append('user_id', userId);
     
     // Update progress to show upload started
     updateUploadProgress(20, 'Uploading image...');
     
     // Send to backend
-    fetch('http://localhost:8000/upload', {
+    fetch('/upload', {
         method: 'POST',
         body: formData
     })
     .then(response => {
         if (!response.ok) {
-            throw new Error(`HTTP error! Status: ${response.status}`);
+            throw new Error(`HTTP error! status: ${response.status}`);
         }
         
         // Update progress to show upload complete and AI processing started
@@ -512,7 +624,7 @@ function uploadImage() {
         console.log("Upload successful:", data);
         
         // Update progress to show AI processing complete
-        updateUploadProgress(100, 'AI preset generated successfully!');
+        updateUploadProgress(60, 'AI preset generated successfully!');
         
         // Hide the upload status after a short delay
         setTimeout(() => {
@@ -651,6 +763,15 @@ function showPresetPreview(presetId, imageUrl, presetData) {
     // Set the preview image
     const previewImage = document.getElementById('preset-preview-image');
     if (previewImage) {
+        // Add error handling for image loading
+        previewImage.onerror = function() {
+            console.error("Failed to load image from URL:", imageUrl);
+        };
+        
+        // Set crossOrigin for external images
+        previewImage.crossOrigin = "anonymous";
+        
+        // Set the image source
         previewImage.src = imageUrl;
         console.log("Set preview image src to:", imageUrl);
     } else {
@@ -677,8 +798,13 @@ function showPresetPreview(presetId, imageUrl, presetData) {
         // If still no preset data, fetch it from the server
         if (!presetData) {
             console.log("Fetching preset data from server");
-            fetch(`http://localhost:8000/preset/${presetId}/preview`)
-                .then(response => response.json())
+            fetch(`/preset/${presetId}/preview`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
                 .then(data => {
                     console.log("Fetched preset data:", data);
                     populateAdjustmentTabs(data, presetId);
@@ -842,7 +968,7 @@ async function initiateCheckout(presetId) {
         const decodedToken = jwt_decode(token);
         const userId = decodedToken.sub;
         
-        const response = await fetch(`http://localhost:8000/preset/${presetId}/checkout`, {
+        const response = await fetch(`/preset/${presetId}/checkout`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -937,7 +1063,7 @@ function downloadPreset(presetId) {
     updateProgressBar(progressBar, 10, 'Requesting download...');
     
     // Fetch the download URL from the server
-    fetch(`http://localhost:8000/preset/${presetId}/download${queryParams}`)
+    fetch(`/preset/${presetId}/download${queryParams}`)
         .then(response => {
             if (!response.ok) {
                 if (response.status === 402) {
@@ -1100,7 +1226,7 @@ function loadUserPresets() {
     if (tableContainer) tableContainer.style.display = 'none';
     
     // Fetch user presets from the backend
-    fetch(`http://localhost:8000/user/${userId}/presets`)
+    fetch(`/user/${userId}/presets`)
         .then(response => {
             if (!response.ok) {
                 throw new Error(`HTTP error! Status: ${response.status}`);
@@ -1215,7 +1341,7 @@ function displayPresetsTable(presets) {
 
 // Function to delete a preset
 function deletePreset(presetId) {
-    fetch(`http://localhost:8000/preset/${presetId}`, {
+    fetch(`/preset/${presetId}`, {
         method: 'DELETE'
     })
         .then(response => {
@@ -1275,7 +1401,7 @@ function loadPresetDetails() {
     }
     
     // Fetch preset details
-    fetch(`http://localhost:8000/preset/${presetId}/preview`)
+    fetch(`/preset/${presetId}/preview`)
         .then(response => {
             if (!response.ok) {
                 throw new Error(`HTTP error! Status: ${response.status}`);
@@ -1330,6 +1456,7 @@ function displayPresetDetails(preset, presetId) {
     const previewImage = document.getElementById('preview-image');
     if (previewImage) {
         previewImage.onerror = function() {
+            console.error("Failed to load image from URL:", preset.image_url);
             this.src = 'data:image/svg+xml;charset=UTF-8,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200"><rect width="200" height="200" fill="%23f0f0f0"/><text x="50%" y="50%" font-family="Arial" font-size="14" text-anchor="middle" fill="%23999">Image not available</text></svg>';
         };
     }
@@ -1430,6 +1557,12 @@ function displayPresetDetails(preset, presetId) {
 
 // Add these functions to handle local storage of the last uploaded image and preset
 function saveLastUploadedImage(imageUrl, presetId, previewData) {
+    // Validate the image URL
+    if (!imageUrl || typeof imageUrl !== 'string' || !imageUrl.startsWith('http')) {
+        console.error("Invalid image URL:", imageUrl);
+        return;
+    }
+    
     const lastUpload = {
         imageUrl: imageUrl,
         presetId: presetId,
@@ -1443,9 +1576,24 @@ function getLastUploadedImage() {
     const lastUploadJson = localStorage.getItem('lastUploadedImage');
     if (lastUploadJson) {
         try {
-            return JSON.parse(lastUploadJson);
+            const data = JSON.parse(lastUploadJson);
+            
+            // Validate the data
+            if (!data.imageUrl || !data.presetId) {
+                console.error("Invalid cached image data:", data);
+                return null;
+            }
+            
+            // Check if the image URL points to mock storage
+            if (data.imageUrl.includes('/mock-storage/')) {
+                console.log("Clearing cached image that points to mock storage");
+                localStorage.removeItem('lastUploadedImage');
+                return null;
+            }
+            
+            return data;
         } catch (e) {
-            console.error("[Storage] Error parsing last upload data:", e);
+            console.error("Error parsing cached image data:", e);
             return null;
         }
     }
@@ -1454,6 +1602,21 @@ function getLastUploadedImage() {
 
 // Add a function to check for last uploaded image on page load
 function checkForLastUpload() {
+    // First, clear any old mock storage URLs
+    const lastUploadJson = localStorage.getItem('lastUploadedImage');
+    if (lastUploadJson) {
+        try {
+            const data = JSON.parse(lastUploadJson);
+            if (data.imageUrl && data.imageUrl.includes('/mock-storage/')) {
+                console.log("Removing cached mock storage URL:", data.imageUrl);
+                localStorage.removeItem('lastUploadedImage');
+            }
+        } catch (e) {
+            console.error("Error checking cached image data:", e);
+        }
+    }
+    
+    // Now get the last uploaded image (if it's valid)
     const lastUpload = getLastUploadedImage();
     if (lastUpload && lastUpload.imageUrl && lastUpload.presetId) {
         console.log("[Upload] Found last uploaded image:", lastUpload);
@@ -1463,23 +1626,76 @@ function checkForLastUpload() {
     }
 }
 
-// Add this function to help debug the DOM elements
-function debugElements() {
-    console.log("[Debug] Checking DOM elements:");
+// Helper function to get the API URL
+function getApiUrl(endpoint) {
+    // Always use relative paths since frontend and backend are served from the same origin
+    return endpoint;
+}
+
+// Initialize the application
+async function initializeApp() {
+    // Get configuration first
+    await getConfig();
     
-    const elements = {
-        'imageUpload': document.getElementById('imageUpload'),
-        'createPresetBtn': document.getElementById('createPresetBtn'),
-        'previewImage': document.getElementById('previewImage'),
-        'previewContainer': document.querySelector('.preview-image-container'),
-        'previewPlaceholder': document.querySelector('.preview-placeholder'),
-        'fileNameDisplay': document.getElementById('fileNameDisplay'),
-        'fileSizeDisplay': document.getElementById('fileSizeDisplay')
-    };
+    // Initialize image upload functionality
+    initializeImageUpload();
     
-    for (const [name, element] of Object.entries(elements)) {
-        console.log(`[Debug] ${name}: ${element ? 'Found' : 'Not found'}`);
+    // Initialize Google Auth
+    startGoogleAuth();
+    
+    // Check if we're on the dashboard page
+    if (document.getElementById('presets-table-body')) {
+        loadUserPresets();
     }
     
-    return elements;
-} 
+    // Check if we're on the preset detail page
+    if (document.getElementById('preset-content')) {
+        loadPresetDetails();
+    }
+    
+    // Check for authentication response in URL
+    checkUrlForAuthResponse();
+    
+    // Check for last uploaded image
+    checkForLastUpload();
+}
+
+// Document ready function to initialize all event handlers
+document.addEventListener('DOMContentLoaded', function() {
+    // Clear any mock storage data
+    clearMockStorageData();
+    
+    // Initialize the app
+    initializeApp();
+});
+
+// Add a function to clear all mock storage data
+function clearMockStorageData() {
+    console.log("Checking for and clearing any mock storage data");
+    
+    // Check for lastUploadedImage
+    const lastUploadJson = localStorage.getItem('lastUploadedImage');
+    if (lastUploadJson) {
+        try {
+            const data = JSON.parse(lastUploadJson);
+            if (data.imageUrl && data.imageUrl.includes('/mock-storage/')) {
+                console.log("Removing cached mock storage URL:", data.imageUrl);
+                localStorage.removeItem('lastUploadedImage');
+            }
+        } catch (e) {
+            console.error("Error checking cached image data:", e);
+        }
+    }
+    
+    // Check for any other items that might contain mock storage URLs
+    // This is a more aggressive approach to ensure all mock storage references are removed
+    for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        const value = localStorage.getItem(key);
+        
+        if (value && value.includes && value.includes('/mock-storage/')) {
+            console.log(`Removing localStorage item with mock storage reference: ${key}`);
+            localStorage.removeItem(key);
+        }
+    }
+}

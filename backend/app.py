@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, send_file, Response
+from flask import Flask, request, jsonify, send_file, Response, send_from_directory
 from flask_cors import CORS
 import os
 import datetime
@@ -11,13 +11,18 @@ import payment
 import supabase_client
 import json
 from dotenv import load_dotenv
-import base64
+import requests
+from urllib.parse import quote_plus
 
 # Load environment variables from .env file
 load_dotenv()
 
-app = Flask(__name__)
+# Initialize Flask app with frontend directory as static folder
+app = Flask(__name__, static_folder='../frontend', static_url_path='')
+
 # Allow all origins for development
+# This is not needed for production since frontend and backend are served from the same origin
+# but we keep it for development flexibility
 CORS(app, resources={r"/*": {"origins": "*"}})
 
 UPLOAD_FOLDER = 'uploads'
@@ -31,6 +36,17 @@ app.config['MAX_CONTENT_LENGTH'] = 164 * 1024 * 1024
 # Create necessary directories
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(PRESET_FOLDER, exist_ok=True)
+
+# Serve frontend files
+@app.route('/')
+def serve_frontend():
+    """Serve the main index.html file"""
+    return send_from_directory(app.static_folder, 'index.html')
+
+@app.route('/<path:path>')
+def serve_static(path):
+    """Serve static files from the frontend directory"""
+    return send_from_directory(app.static_folder, path)
 
 @app.route('/upload', methods=['POST'])
 def upload_image():
@@ -183,10 +199,6 @@ def download_preset(preset_id):
         print(f"Preset not found: {preset_id}")
         return jsonify({'error': 'Preset not found'}), 404
     
-    # Check if we're in development mode
-    dev_mode = request.args.get('FLASK_ENV') == 'development' or os.environ.get('FLASK_ENV') == 'development'
-    print(f"Development mode: {dev_mode}")
-    
     # Check if preset has been purchased
     session_id = request.args.get('session_id')
     if session_id:
@@ -197,7 +209,7 @@ def download_preset(preset_id):
             supabase_client.mark_preset_as_purchased(preset_id, session_id)
     
     # Check if the preset is purchased or if we're in development mode
-    if preset.get('purchased') or dev_mode:
+    if preset.get('purchased'):
         # Get the XMP URL
         xmp_url = preset.get('xmp_url')
         print(f"Returning XMP URL: {xmp_url}")
@@ -247,46 +259,6 @@ def google_callback():
 def test_endpoint():
     return jsonify({"status": "success", "message": "Backend is running"}), 200
 
-@app.route('/mock-storage/<bucket>/<user_id>/<preset_id>/<filename>', methods=['GET'])
-def mock_storage(bucket, user_id, preset_id, filename):
-    """Serve mock storage files for development"""
-    url = f"http://localhost:8000/mock-storage/{bucket}/{user_id}/{preset_id}/{filename}"
-    
-    print(f"Attempting to serve mock file: {url}")
-    print(f"Available mock URLs: {list(supabase_client.mock_storage_urls.keys())}")
-    
-    if url in supabase_client.mock_storage_urls:
-        data = supabase_client.mock_storage_urls[url]
-        print(f"Found data for URL: {url}, data type: {type(data)}, data length: {len(data) if data else 'None'}")
-        
-        # Determine content type
-        content_type = 'application/octet-stream'
-        if filename.endswith('.jpg') or filename.endswith('.jpeg'):
-            content_type = 'image/jpeg'
-        elif filename.endswith('.png'):
-            content_type = 'image/png'
-        elif filename.endswith('.webp'):
-            content_type = 'image/webp'
-        elif filename.endswith('.xmp'):
-            content_type = 'application/xml'
-        
-        print(f"Serving mock file with content type: {content_type}")
-        
-        # Ensure data is bytes
-        if isinstance(data, str):
-            if data.startswith('data:'):
-                # Handle data URLs
-                header, encoded = data.split(",", 1)
-                data = base64.b64decode(encoded)
-            else:
-                data = data.encode('utf-8')
-        
-        return Response(data, mimetype=content_type)
-    else:
-        print(f"Mock file not found: {url}")
-        print(f"Available URLs: {list(supabase_client.mock_storage_urls.keys())}")
-        return jsonify({'error': 'File not found'}), 404
-
 @app.route('/preset/<preset_id>', methods=['DELETE'])
 def delete_preset(preset_id):
     """Delete a preset"""
@@ -325,10 +297,50 @@ def get_preset(preset_id):
 @app.route('/config', methods=['GET'])
 def get_config():
     """Get public configuration values"""
+    backend_url = os.environ.get('BACKEND_URL', 'http://localhost:8000')
     return jsonify({
         'googleClientId': os.environ.get('GOOGLE_CLIENT_ID'),
-        'env': os.environ.get('FLASK_ENV', 'development')
+        'env': os.environ.get('FLASK_ENV', 'development'),
+        'backendUrl': backend_url
     }), 200
 
-if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=8000) 
+# Add a route to proxy Google profile images
+@app.route('/proxy/profile-image', methods=['GET'])
+def proxy_profile_image():
+    """
+    Proxy for Google profile images to avoid rate limiting.
+    The URL is passed as a query parameter 'url'.
+    """
+    try:
+        image_url = request.args.get('url')
+        if not image_url:
+            return jsonify({'error': 'No URL provided'}), 400
+            
+        # Only allow Google URLs
+        if not image_url.startswith('https://lh3.googleusercontent.com/'):
+            return jsonify({'error': 'Only Google profile images are allowed'}), 400
+            
+        # Fetch the image
+        response = requests.get(image_url, stream=True)
+        
+        if response.status_code != 200:
+            return jsonify({'error': f'Failed to fetch image: {response.status_code}'}), response.status_code
+            
+        # Return the image with appropriate headers
+        return Response(
+            response.content, 
+            mimetype=response.headers.get('Content-Type', 'image/jpeg'),
+            headers={
+                'Cache-Control': 'public, max-age=86400',  # Cache for 24 hours
+                'Pragma': 'cache'
+            }
+        )
+    except Exception as e:
+        print(f"Error proxying profile image: {e}")
+        return jsonify({'error': str(e)}), 500
+
+# Run the application
+if __name__ == "__main__":
+    # Run the app on port 8000
+    print("Starting server on http://localhost:8000")
+    app.run(debug=True, host='0.0.0.0', port=8000)

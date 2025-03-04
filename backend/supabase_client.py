@@ -9,39 +9,37 @@ import datetime
 # Load environment variables
 load_dotenv()
 
-# Initialize Supabase client with mock functionality for development
+# Initialize Supabase client
 supabase_url = os.environ.get("SUPABASE_URL")
 supabase_key = os.environ.get("SUPABASE_API_KEY")
 
 print(f"Supabase URL: {supabase_url}")
 print(f"Supabase Key: {supabase_key[:10]}..." if supabase_key else "None")
 
-# Flag to determine if we're using real Supabase or mock
-USE_REAL_SUPABASE = bool(supabase_url and supabase_key)
+# Always use real Supabase
+USE_REAL_SUPABASE = True
 print(f"Using real Supabase: {USE_REAL_SUPABASE}")
 
-# Initialize the client if credentials are available
+# Initialize the client
 supabase = None
-if USE_REAL_SUPABASE:
+if supabase_url and supabase_key:
     try:
         supabase = create_client(supabase_url, supabase_key)
         print("Supabase client initialized successfully")
     except Exception as e:
         print(f"Error initializing Supabase client: {e}")
-        USE_REAL_SUPABASE = False
+        raise RuntimeError(f"Failed to initialize Supabase client: {e}")
 else:
-    print("Using mock Supabase client (development mode)")
+    raise ValueError("Supabase credentials not found. Please set SUPABASE_URL and SUPABASE_API_KEY environment variables.")
 
-# In-memory storage for development
+# In-memory storage for users and presets (temporary until DB operations complete)
 mock_users = {}
 mock_presets = {}
-mock_storage_urls = {}
 
 def get_supabase_client() -> Client:
     """Get a Supabase client instance"""
     if not supabase_url or not supabase_key:
-        print("Warning: Supabase credentials not found, using mock implementation")
-        return None
+        raise ValueError("Supabase credentials not found. Please set SUPABASE_URL and SUPABASE_API_KEY environment variables.")
     
     return create_client(supabase_url, supabase_key)
 
@@ -56,45 +54,33 @@ def store_user(user_id, user_data):
     Returns:
         User data from Supabase
     """
-    if USE_REAL_SUPABASE:
-        try:
-            # Check if user exists
-            existing_user = supabase.table('users').select('*').eq('google_id', user_id).execute()
-            
-            if len(existing_user.data) > 0:
-                # Update existing user
-                user = supabase.table('users').update({
-                    'name': user_data.get('name'),
-                    'email': user_data.get('email'),
-                    'picture': user_data.get('picture'),
-                    'last_login': 'now()'
-                }).eq('google_id', user_id).execute()
-                return user.data[0]
-            else:
-                # Create new user
-                user = supabase.table('users').insert({
-                    'google_id': user_id,
-                    'name': user_data.get('name'),
-                    'email': user_data.get('email'),
-                    'picture': user_data.get('picture'),
-                    'created_at': 'now()',
-                    'last_login': 'now()'
-                }).execute()
-                return user.data[0]
-        except Exception as e:
-            print(f"Error storing user in Supabase: {e}")
-            # Fall back to mock storage
-    
-    # Mock storage
-    mock_users[user_id] = {
-        'google_id': user_id,
-        'name': user_data.get('name'),
-        'email': user_data.get('email'),
-        'picture': user_data.get('picture'),
-        'created_at': str(datetime.datetime.now()),
-        'last_login': str(datetime.datetime.now())
-    }
-    return mock_users[user_id]
+    try:
+        # Check if user exists
+        existing_user = supabase.table('users').select('*').eq('google_id', user_id).execute()
+        
+        if len(existing_user.data) > 0:
+            # Update existing user
+            user = supabase.table('users').update({
+                'name': user_data.get('name'),
+                'email': user_data.get('email'),
+                'picture': user_data.get('picture'),
+                'last_login': 'now()'
+            }).eq('google_id', user_id).execute()
+            return user.data[0]
+        else:
+            # Create new user
+            user = supabase.table('users').insert({
+                'google_id': user_id,
+                'name': user_data.get('name'),
+                'email': user_data.get('email'),
+                'picture': user_data.get('picture'),
+                'created_at': 'now()',
+                'last_login': 'now()'
+            }).execute()
+            return user.data[0]
+    except Exception as e:
+        print(f"Error storing user in Supabase: {e}")
+        raise
 
 def store_preset(user_id, image_data, metadata, xmp_content):
     """Store a preset in Supabase"""
@@ -102,30 +88,6 @@ def store_preset(user_id, image_data, metadata, xmp_content):
         # Generate a unique ID for this preset
         preset_id = str(uuid.uuid4())
         
-        # For development, store in mock storage
-        if os.environ.get('FLASK_ENV') == 'development' or not USE_REAL_SUPABASE:
-            # Store image in mock storage
-            image_url = f"http://localhost:8000/mock-storage/images/{user_id}/{preset_id}/image.jpg"
-            mock_storage_urls[image_url] = image_data
-            
-            # Store XMP in mock storage
-            xmp_url = f"http://localhost:8000/mock-storage/presets/{user_id}/{preset_id}/preset.xmp"
-            mock_storage_urls[xmp_url] = xmp_content
-            
-            # Store preset in mock database
-            mock_presets[preset_id] = {
-                'id': preset_id,
-                'user_id': user_id,
-                'image_url': image_url,
-                'xmp_url': xmp_url,
-                'metadata': json.dumps(metadata),
-                'created_at': datetime.datetime.now().isoformat(),
-                'purchased': False
-            }
-            
-            return preset_id
-        
-        # For production, store in Supabase
         # Ensure image_data is binary
         if not isinstance(image_data, bytes):
             print("Warning: image_data is not bytes, converting...")
@@ -199,26 +161,13 @@ def get_preset(preset_id):
     """Get a preset by ID"""
     print(f"Getting preset from Supabase: {preset_id}")
     
-    # For development, return mock data
-    if os.environ.get('FLASK_ENV') == 'development' or not USE_REAL_SUPABASE:
-        print(f"Using mock data for preset: {preset_id}")
-        
-        if preset_id in mock_presets:
-            preset = mock_presets[preset_id]
-            print(f"Found mock preset: {preset}")
-            return preset
-        else:
-            print(f"Mock preset not found: {preset_id}")
-            return None
-    
-    # For production, get from Supabase
     try:
-        supabase = get_supabase_client()
         response = supabase.table("presets").select("*").eq("id", preset_id).execute()
         
         if response.data and len(response.data) > 0:
             return response.data[0]
         else:
+            print(f"Preset not found in Supabase: {preset_id}")
             return None
     
     except Exception as e:
@@ -227,12 +176,7 @@ def get_preset(preset_id):
 
 def mark_preset_as_purchased(preset_id, session_id):
     """Mark a preset as purchased in Supabase"""
-    if os.environ.get('FLASK_ENV') == 'development' or not supabase_url or not supabase_key:
-        # In development, just return success
-        return True
-    
     try:
-        supabase = get_supabase_client()
         supabase.table("presets").update({"purchased": True}).eq("id", preset_id).execute()
         
         # Optionally store the payment session ID
@@ -251,17 +195,7 @@ def mark_preset_as_purchased(preset_id, session_id):
 
 def get_user_presets(user_id):
     """Get all presets for a user"""
-    if os.environ.get('FLASK_ENV') == 'development' or not supabase_url or not supabase_key:
-        # In development, return mock data
-        return [{
-            "id": str(uuid.uuid4()),
-            "image_url": "https://via.placeholder.com/300",
-            "created_at": "2023-01-01T00:00:00",
-            "purchased": True
-        }]
-    
     try:
-        supabase = get_supabase_client()
         response = supabase.table("presets").select("*").eq("user_id", user_id).execute()
         
         if response.data:
@@ -275,10 +209,6 @@ def get_user_presets(user_id):
 
 def store_user(user_id, user_info):
     """Store or update user information in Supabase"""
-    if os.environ.get('FLASK_ENV') == 'development' or not supabase_url or not supabase_key:
-        # In development, just return success
-        return True
-    
     try:
         supabase = get_supabase_client()
         
@@ -305,4 +235,4 @@ def store_user(user_id, user_info):
     
     except Exception as e:
         print(f"Error storing user in Supabase: {e}")
-        return False 
+        return False
