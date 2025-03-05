@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pic2Preset - Your Presets Dashboard</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="css/style.css">
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; 
         connect-src 'self' https://accounts.google.com https://*.googleapis.com http://localhost:8000; 
         script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.gstatic.com https://accounts.google.com https://cdn.jsdelivr.net https://apis.google.com; 
@@ -18,7 +18,7 @@
     <header>
         <nav>
             <div class="logo">
-                <i class="fas fa-camera-retro"></i> Pic2Preset
+                <a href="index.html"><i class="fas fa-camera-retro"></i> Pic2Preset</a>
             </div>
             <div class="nav-links">
                 <a href="index.html">Home</a>
@@ -32,20 +32,18 @@
 
     <main>
         <section id="dashboard">
-            <div class="dashboard-header">
-                <h1>Your Presets</h1>
-                <a href="index.html" class="create-button">
-                    <i class="fas fa-plus"></i> Create New Preset
-                </a>
-            </div>
-            
             <div class="dashboard-content">
-                <div class="presets-table-container">
-                    <table id="presets-table" class="presets-table">
+                <div class="dashboard-container">
+                    <div class="dashboard-header">
+                        <h1>Your Presets</h1>
+                        <p>Manage and organize your Lightroom presets</p>
+                    </div>
+                    
+                    <table class="dashboard-table" id="presets-table">
                         <thead>
                             <tr>
-                                <th>Image</th>
-                                <th>Preset Name</th>
+                                <th>Preview</th>
+                                <th>Name</th>
                                 <th>Created</th>
                                 <th>Actions</th>
                             </tr>
@@ -54,12 +52,12 @@
                             <!-- Presets will be loaded here -->
                         </tbody>
                     </table>
-                </div>
-                
-                <div id="no-presets" class="no-presets" style="display:none;">
-                    <i class="fas fa-camera"></i>
-                    <p>You haven't created any presets yet.</p>
-                    <a href="index.html" class="create-preset-link">Create Your First Preset</a>
+
+                    <div class="empty-state" id="empty-state" style="display: none;">
+                        <i class="fas fa-images"></i>
+                        <h2>No presets yet</h2>
+                        <p>Upload your first Lightroom preset to get started</p>
+                    </div>
                 </div>
                 
                 <div id="loading-presets" class="loading-presets">
@@ -76,6 +74,10 @@
 
     <script src="https://accounts.google.com/gsi/client"></script>
     <script src="https://cdn.jsdelivr.net/npm/jwt-decode@3.1.2/build/jwt-decode.min.js"></script>
-    <script src="script.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/upload.js"></script>
+    <script src="js/preset.js"></script>
+    <script src="js/main.js"></script>
 </body>
-</html> 
+</html>

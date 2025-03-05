@@ -26,43 +26,42 @@ def get_image_metadata(image_path):
     print(f"Getting metadata for image: {image_path}")
     
     # For development, return mock data
-    mock_metadata = {
-        "basic": {
-            "exposure": 0.3,
-            "contrast": 15,
-            "highlights": -30,
-            "shadows": 20,
-            "whites": 0,
-            "blacks": 10,
-            "clarity": 5,
-            "vibrance": 0,
-            "saturation": 5,
-            "dehaze": 10
-        },
-        "color": {
-            "temperature": 6600,
-            "tint": 5,
-            "vibrance": 0,
-            "saturation": 5
-        },
-        "detail": {
-            "sharpness": 40,
-            "noise_reduction": 5,
-            "color_noise_reduction": 10,
-            "detail": 50,
-            "masking": 20,
-            "radius": 1
-        },
-        "effects": {
-            "amount": 0,
-            "feather": 50,
-            "midpoint": 50,
-            "roundness": 0
-        }
-    }
-    
-    print("Generated mock metadata")
-    return mock_metadata
+    # mock_metadata = {
+    #     "basic": {
+    #         "exposure": 0.3,
+    #         "contrast": 15,
+    #         "highlights": -30,
+    #         "shadows": 20,
+    #         "whites": 0,
+    #         "blacks": 10,
+    #         "clarity": 5,
+    #         "vibrance": 0,
+    #         "saturation": 5,
+    #         "dehaze": 10
+    #     },
+    #     "color": {
+    #         "temperature": 6600,
+    #         "tint": 5,
+    #         "vibrance": 0,
+    #         "saturation": 5
+    #     },
+    #     "detail": {
+    #         "sharpness": 40,
+    #         "noise_reduction": 5,
+    #         "color_noise_reduction": 10,
+    #         "detail": 50,
+    #         "masking": 20,
+    #         "radius": 1
+    #     },
+    #     "effects": {
+    #         "amount": 0,
+    #         "feather": 50,
+    #         "midpoint": 50,
+    #         "roundness": 0
+    #     }
+    # }
+    # print("Generated mock metadata")
+    # return mock_metadata
 
 def process_with_gemini(image_data, image_path):
     """Process the image with Google's Gemini Vision model"""
@@ -543,30 +542,50 @@ def mock_image_analysis(image_path):
     
     return metadata
 
-def generate_preset_from_image(image_path):
-    """Generate a Lightroom preset from an image using an LLM."""
+def generate_preset_from_image(image_path_or_data):
+    """
+    Generate a Lightroom preset from an image using an LLM.
+    
+    Args:
+        image_path_or_data: Either a path to an image file or the binary image data
+        
+    Returns:
+        Dictionary containing preset metadata
+    """
     
     # Check if we have API keys
     if not OPENAI_API_KEY and not ANTHROPIC_API_KEY:
         print("WARNING: No API keys found for OpenAI or Anthropic. Using mock preset data.")
         return generate_mock_preset()
     
+    # Determine if we're working with a file path or binary data
+    is_file_path = isinstance(image_path_or_data, str)
+    
     # Try to use Anthropic first (Claude has better vision capabilities)
     if ANTHROPIC_API_KEY:
         try:
-            return generate_preset_with_anthropic(image_path)
+            if is_file_path:
+                return generate_preset_with_anthropic(image_path_or_data)
+            else:
+                return generate_preset_with_anthropic_data(image_path_or_data)
         except Exception as e:
             print(f"Error using Anthropic API: {e}")
             # Fall back to OpenAI if available
             if OPENAI_API_KEY:
-                return generate_preset_with_openai(image_path)
+                if is_file_path:
+                    return generate_preset_with_openai(image_path_or_data)
+                else:
+                    return generate_preset_with_openai_data(image_path_or_data)
             else:
                 return generate_mock_preset()
     
     # Use OpenAI if Anthropic is not available
     elif OPENAI_API_KEY:
         try:
-            return generate_preset_with_openai(image_path)
+            if is_file_path:
+                return generate_preset_with_openai(image_path_or_data)
+            else:
+                return generate_preset_with_openai_data(image_path_or_data)
         except Exception as e:
             print(f"Error using OpenAI API: {e}")
             return generate_mock_preset()
@@ -712,6 +731,142 @@ def generate_preset_with_anthropic(image_path):
         print(f"Error from Anthropic API: {response.status_code} - {response.text}")
         return generate_mock_preset()
 
+def generate_preset_with_anthropic_data(image_data):
+    """Generate a preset using Anthropic's Claude API with image data."""
+    
+    # Encode image to base64
+    base64_image = base64.b64encode(image_data).decode('utf-8')
+    
+    # Prepare the API request
+    headers = {
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json"
+    }
+    
+    # Construct the prompt
+    prompt = """
+    You are an expert photographer and photo editor. Analyze this image and create a Lightroom preset that would enhance it.
+    
+    Please provide the preset as a JSON object with the following structure:
+    {
+        "basic": {
+            "exposure": float,
+            "contrast": float,
+            "highlights": float,
+            "shadows": float,
+            "whites": float,
+            "blacks": float,
+            "clarity": float,
+            "vibrance": float,
+            "saturation": float
+        },
+        "color": {
+            "temperature": float,
+            "tint": float,
+            "hue_red": float,
+            "hue_orange": float,
+            "hue_yellow": float,
+            "hue_green": float,
+            "hue_aqua": float,
+            "hue_blue": float,
+            "hue_purple": float,
+            "hue_magenta": float,
+            "saturation_red": float,
+            "saturation_orange": float,
+            "saturation_yellow": float,
+            "saturation_green": float,
+            "saturation_aqua": float,
+            "saturation_blue": float,
+            "saturation_purple": float,
+            "saturation_magenta": float,
+            "luminance_red": float,
+            "luminance_orange": float,
+            "luminance_yellow": float,
+            "luminance_green": float,
+            "luminance_aqua": float,
+            "luminance_blue": float,
+            "luminance_purple": float,
+            "luminance_magenta": float
+        },
+        "detail": {
+            "sharpness": float,
+            "noise_reduction": float
+        },
+        "effects": {
+            "vignette": float,
+            "grain": float
+        }
+    }
+    
+    Analyze the image carefully and provide values that would enhance it. Values should typically be between -100 and 100, with 0 being neutral.
+    Only return the JSON object, nothing else.
+    """
+    
+    # Prepare the API request data
+    data = {
+        "model": "claude-3-opus-20240229",
+        "max_tokens": 1000,
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": prompt
+                    },
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": "image/jpeg",
+                            "data": base64_image
+                        }
+                    }
+                ]
+            }
+        ]
+    }
+    
+    # Make the API request
+    response = requests.post(
+        "https://api.anthropic.com/v1/messages",
+        headers=headers,
+        json=data
+    )
+    
+    # Parse the response
+    if response.status_code == 200:
+        response_data = response.json()
+        content = response_data["content"][0]["text"]
+        
+        # Extract the JSON part from the response
+        import json
+        import re
+        
+        # Try to find JSON in the response
+        json_match = re.search(r'```json\s*(.*?)\s*```', content, re.DOTALL)
+        if json_match:
+            json_str = json_match.group(1)
+        else:
+            # If no JSON code block, try to find a JSON object directly
+            json_match = re.search(r'(\{.*\})', content, re.DOTALL)
+            if json_match:
+                json_str = json_match.group(1)
+            else:
+                # If still no JSON, use the entire response
+                json_str = content
+        
+        try:
+            preset_data = json.loads(json_str)
+            return preset_data
+        except json.JSONDecodeError:
+            print("Error parsing JSON from Anthropic response")
+            return generate_mock_preset()
+    else:
+        print(f"Error from Anthropic API: {response.status_code} - {response.text}")
+        return generate_mock_preset()
+
 def generate_preset_with_openai(image_path):
     """Generate a preset using OpenAI's GPT-4 Vision API."""
     
@@ -799,6 +954,139 @@ def generate_preset_with_openai(image_path):
                         "type": "image_url",
                         "image_url": {
                             "url": f"data:image/jpeg;base64,{image_data}"
+                        }
+                    }
+                ]
+            }
+        ],
+        "max_tokens": 1000
+    }
+    
+    # Make the API request
+    response = requests.post(
+        "https://api.openai.com/v1/chat/completions",
+        headers=headers,
+        json=data
+    )
+    
+    # Parse the response
+    if response.status_code == 200:
+        response_data = response.json()
+        content = response_data["choices"][0]["message"]["content"]
+        
+        # Extract the JSON part from the response
+        import json
+        import re
+        
+        # Try to find JSON in the response
+        json_match = re.search(r'```json\s*(.*?)\s*```', content, re.DOTALL)
+        if json_match:
+            json_str = json_match.group(1)
+        else:
+            # If no JSON code block, try to find a JSON object directly
+            json_match = re.search(r'(\{.*\})', content, re.DOTALL)
+            if json_match:
+                json_str = json_match.group(1)
+            else:
+                # If still no JSON, use the entire response
+                json_str = content
+        
+        try:
+            preset_data = json.loads(json_str)
+            return preset_data
+        except json.JSONDecodeError:
+            print("Error parsing JSON from OpenAI response")
+            return generate_mock_preset()
+    else:
+        print(f"Error from OpenAI API: {response.status_code} - {response.text}")
+        return generate_mock_preset()
+
+def generate_preset_with_openai_data(image_data):
+    """Generate a preset using OpenAI's GPT-4 Vision API with image data."""
+    
+    # Encode image to base64
+    base64_image = base64.b64encode(image_data).decode('utf-8')
+    
+    # Prepare the API request
+    headers = {
+        "Authorization": f"Bearer {OPENAI_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    
+    # Construct the prompt
+    prompt = """
+    You are an expert photographer and photo editor. Analyze this image and create a Lightroom preset that would enhance it.
+    
+    Please provide the preset as a JSON object with the following structure:
+    {
+        "basic": {
+            "exposure": float,
+            "contrast": float,
+            "highlights": float,
+            "shadows": float,
+            "whites": float,
+            "blacks": float,
+            "clarity": float,
+            "vibrance": float,
+            "saturation": float
+        },
+        "color": {
+            "temperature": float,
+            "tint": float,
+            "hue_red": float,
+            "hue_orange": float,
+            "hue_yellow": float,
+            "hue_green": float,
+            "hue_aqua": float,
+            "hue_blue": float,
+            "hue_purple": float,
+            "hue_magenta": float,
+            "saturation_red": float,
+            "saturation_orange": float,
+            "saturation_yellow": float,
+            "saturation_green": float,
+            "saturation_aqua": float,
+            "saturation_blue": float,
+            "saturation_purple": float,
+            "saturation_magenta": float,
+            "luminance_red": float,
+            "luminance_orange": float,
+            "luminance_yellow": float,
+            "luminance_green": float,
+            "luminance_aqua": float,
+            "luminance_blue": float,
+            "luminance_purple": float,
+            "luminance_magenta": float
+        },
+        "detail": {
+            "sharpness": float,
+            "noise_reduction": float
+        },
+        "effects": {
+            "vignette": float,
+            "grain": float
+        }
+    }
+    
+    Analyze the image carefully and provide values that would enhance it. Values should typically be between -100 and 100, with 0 being neutral.
+    Only return the JSON object, nothing else.
+    """
+    
+    # Prepare the API request data
+    data = {
+        "model": "gpt-4-vision-preview",
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": prompt
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{base64_image}"
                         }
                     }
                 ]

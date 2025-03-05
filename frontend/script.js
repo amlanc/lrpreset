@@ -407,16 +407,7 @@ function initializeImageUpload() {
 // Function to handle file selection
 function handleFileSelect(event) {
     const file = event.target.files[0];
-    if (!file) {
-        console.warn("[Upload] No file selected");
-        return;
-    }
-    
-    console.log("[Upload] Processing file:", {
-        name: file.name,
-        type: file.type,
-        size: `${(file.size / 1024 / 1024).toFixed(2)}MB`
-    });
+    if (!file) return;
     
     // Check file type
     const validTypes = ['image/jpeg', 'image/png', 'image/webp'];
@@ -432,30 +423,32 @@ function handleFileSelect(event) {
         return;
     }
     
-    // Show preview
     const reader = new FileReader();
     reader.onload = function(e) {
-        console.log("[Upload] File read complete, showing preview");
-        
-        // Get elements
         const previewImage = document.getElementById('previewImage');
         const previewContainer = document.querySelector('.preview-image-container');
         const previewPlaceholder = document.querySelector('.preview-placeholder');
+        const previewDetails = document.querySelector('.preview-details');
         
-        // Check if elements exist
         if (!previewImage || !previewContainer || !previewPlaceholder) {
             console.error("[Upload] Preview elements not found");
             return;
         }
         
-        // Set image source
         previewImage.src = e.target.result;
-        
-        // Show image container and hide placeholder
         previewContainer.style.display = 'block';
         previewPlaceholder.style.display = 'none';
+        
+        if (previewDetails) {
+            const fileNameDisplay = document.getElementById('fileNameDisplay');
+            const fileSizeDisplay = document.getElementById('fileSizeDisplay');
+            if (fileNameDisplay && fileSizeDisplay) {
+                fileNameDisplay.textContent = file.name;
+                fileSizeDisplay.textContent = `${(file.size / 1024 / 1024).toFixed(2)} MB`;
+                previewDetails.style.display = 'block';
+            }
+        }
     };
-    
     reader.readAsDataURL(file);
 }
 
@@ -472,7 +465,7 @@ function handleCreatePresetClick() {
     
     // Get the image file
     const imageUpload = document.getElementById('imageUpload');
-    if (!imageUpload || !imageUpload.files || !imageUpload.files[0]) {
+    if (!imageUpload || !imageUpload.files || imageUpload.files.length === 0) {
         alert('Please upload an image first');
         return;
     }
@@ -515,101 +508,13 @@ function handleCreatePresetClick() {
     })
     .then(response => {
         if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        // Update progress to show upload complete and AI processing started
-        updateUploadProgress(40, 'Image uploaded, processing with AI...');
-        
-        return response.json();
-    })
-    .then(data => {
-        // Handle successful upload
-        updateUploadProgress(60, 'AI processing complete, generating preset...');
-        
-        // Check if we have a preset ID
-        if (data && data.preset_id) {
-            // Wait a bit to show progress, then redirect to preset page
-            setTimeout(() => {
-                updateUploadProgress(100, 'Preset created successfully!');
-                
-                // Redirect to preset page
-                setTimeout(() => {
-                    window.location.href = `${window.location.origin}/preset.html?id=${data.preset_id}`;
-                }, 500);
-            }, 1000);
-        } else {
-            console.log("[Upload] No image selected, showing alert");
-            alert("Please select an image first.");
-        }
-    })
-}
-
-// Function to upload image
-function uploadImage() {
-    console.log("[Upload] Starting image upload process");
-    
-    const fileInput = document.getElementById('imageUpload');
-    if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
-        console.error("[Upload] No file selected for upload");
-        alert('Please select an image first.');
-        return;
-    }
-    
-    const file = fileInput.files[0];
-    
-    // Get user ID (use anonymous if not logged in)
-    const token = localStorage.getItem('googleToken');
-    let userId = 'anonymous';
-    
-    if (token) {
-        try {
-            const decoded = jwt_decode(token);
-            userId = decoded.sub;
-        } catch (e) {
-            console.error("[Auth] Error decoding token:", e);
-        }
-    }
-    
-    console.log("[Upload] Sending request to backend:", {
-        fileName: file.name,
-        fileType: file.type,
-        fileSize: `${(file.size / 1024 / 1024).toFixed(2)}MB`,
-        userId: userId
-    });
-    
-    // Show upload status
-    const uploadStatus = document.getElementById('upload-status');
-    const uploadProgress = document.getElementById('uploadProgress');
-    const statusText = document.getElementById('statusText');
-    
-    if (uploadStatus) {
-        uploadStatus.style.display = 'block';
-    }
-    
-    if (uploadProgress) {
-        uploadProgress.style.width = '0%';
-    }
-    
-    if (statusText) {
-        statusText.textContent = 'Uploading your image...';
-    }
-    
-    // Create form data
-    const formData = new FormData();
-    formData.append('image', file);
-    formData.append('user_id', userId);
-    
-    // Update progress to show upload started
-    updateUploadProgress(20, 'Uploading image...');
-    
-    // Send to backend
-    fetch('/upload', {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+            // Start by parsing the response to get the error message
+            return response.json().then(errorData => {
+                throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+            }).catch(jsonError => {
+                // If we can't parse JSON, use the status text
+                throw new Error(`Upload failed: ${response.statusText || `HTTP error! status: ${response.status}`}`);
+            });
         }
         
         // Update progress to show upload complete and AI processing started
@@ -624,23 +529,29 @@ function uploadImage() {
         console.log("Upload successful:", data);
         
         // Update progress to show AI processing complete
-        updateUploadProgress(60, 'AI preset generated successfully!');
+        updateUploadProgress(95, 'AI processing complete, finalizing preset...');
         
-        // Hide the upload status after a short delay
-        setTimeout(() => {
-            if (uploadStatus) {
-                uploadStatus.style.display = 'none';
-            }
-            
-            // Show the preset preview
-            showPresetPreview(data.preset_id, data.image_url, data.preset_data);
-            
-            // Save the last uploaded image
-            saveLastUploadedImage(data.image_url, data.preset_id, data.preset_data);
-        }, 1000);
+        // Check if we have a preset ID
+        if (data && data.preset_id) {
+            // Wait a bit to show progress, then redirect to preset page
+            setTimeout(() => {
+                updateUploadProgress(100, 'Preset created successfully!');
+                
+                // Redirect to preset page
+                setTimeout(() => {
+                    window.location.href = `${window.location.origin}/preset-detail.html?id=${data.preset_id}`;
+                }, 500);
+            }, 1000);
+        } else {
+            console.log("[Upload] No image selected, showing alert");
+            alert("Please select an image first.");
+        }
     })
     .catch(error => {
         console.error("[Upload] Error uploading image:", error);
+        
+        // Stop the AI animation if it was started
+        stopAIProgressAnimation();
         
         if (statusText) {
             statusText.textContent = `Error: ${error.message}`;
@@ -661,6 +572,63 @@ function uploadImage() {
     });
 }
 
+// Function to upload image
+function uploadImage() {
+    return new Promise((resolve, reject) => {
+        if (!isAuthenticated()) {
+            reject(new Error('Authentication required'));
+            return;
+        }
+        
+        const fileInput = document.getElementById('file-input');
+        const file = fileInput.files[0];
+        
+        if (!file) {
+            reject(new Error('No file selected'));
+            return;
+        }
+        
+        // Create form data
+        const formData = new FormData();
+        formData.append('image', file);
+        
+        // Get the ID token
+        const idToken = googleUser.credential;
+        
+        // Create headers with authentication
+        const headers = new Headers({
+            'Authorization': `Bearer ${idToken}`
+        });
+        
+        // Upload the image
+        fetch('/upload', {
+            method: 'POST',
+            headers: headers,
+            body: formData
+        })
+        .then(response => {
+            if (!response.ok) {
+                if (response.status === 401) {
+                    throw new Error('Authentication required');
+                }
+                throw new Error(`HTTP error! Status: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            resolve(data);
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            if (error.message === 'Authentication required') {
+                // Redirect to sign in
+                initiateGoogleSignIn();
+            }
+            reject(error);
+        });
+    });
+}
+
 // Function to update upload progress
 function updateUploadProgress(percentage, message) {
     const uploadProgress = document.getElementById('uploadProgress');
@@ -668,22 +636,64 @@ function updateUploadProgress(percentage, message) {
     
     if (uploadProgress) {
         uploadProgress.style.width = `${percentage}%`;
+        
+        // Add pulse animation when AI is processing (between 20% and 90%)
+        if (percentage > 20 && percentage < 90) {
+            uploadProgress.classList.add('pulse');
+        } else {
+            uploadProgress.classList.remove('pulse');
+        }
     }
     
     if (statusText && message) {
         statusText.textContent = message;
+        
+        // Add typing animation when AI is processing
+        if (percentage > 20 && percentage < 90) {
+            statusText.classList.add('typing-animation');
+        } else {
+            statusText.classList.remove('typing-animation');
+        }
     }
+    
+    // Show AI processing steps when we reach the AI processing stage
+    const aiProcessingContainer = document.getElementById('aiProcessingContainer');
+    if (aiProcessingContainer) {
+        if (percentage >= 20) {
+            aiProcessingContainer.style.display = 'block';
+        } else {
+            aiProcessingContainer.style.display = 'none';
+        }
+    }
+    
+    // Update the active AI step based on the progress percentage
+    updateAIProcessingStep(percentage);
 }
 
 // Function to simulate AI progress animation
 function startAIProgressAnimation() {
+    console.log("Starting AI progress animation");
     const uploadProgress = document.getElementById('uploadProgress');
     const statusText = document.getElementById('statusText');
+    const aiProcessingContainer = document.getElementById('aiProcessingContainer');
     
-    if (!uploadProgress) return;
+    if (!uploadProgress) {
+        console.error("Upload progress element not found");
+        return;
+    }
+    
+    // Show AI processing container
+    if (aiProcessingContainer) {
+        aiProcessingContainer.style.display = 'block';
+    } else {
+        console.error("AI processing container not found");
+    }
     
     // Start from 40% (after upload complete)
     let progress = 40;
+    
+    // Add pulse animation to progress bar
+    uploadProgress.classList.add('pulse');
     
     // AI processing messages to cycle through
     const aiMessages = [
@@ -697,11 +707,23 @@ function startAIProgressAnimation() {
     
     let messageIndex = 0;
     
+    // Initial message
+    if (statusText) {
+        statusText.textContent = aiMessages[0];
+        statusText.classList.add('typing-animation');
+    }
+    
     // Update message every 2 seconds
     const messageInterval = setInterval(() => {
         if (statusText) {
-            statusText.textContent = aiMessages[messageIndex];
             messageIndex = (messageIndex + 1) % aiMessages.length;
+            statusText.textContent = aiMessages[messageIndex];
+            
+            // Ensure the typing animation is applied
+            statusText.classList.remove('typing-animation');
+            // Force a reflow to restart the animation
+            void statusText.offsetWidth;
+            statusText.classList.add('typing-animation');
         }
     }, 2000);
     
@@ -714,7 +736,6 @@ function startAIProgressAnimation() {
         if (progress >= 90) {
             progress = 90;
             clearInterval(progressInterval);
-            clearInterval(messageInterval);
             
             if (statusText) {
                 statusText.textContent = "Almost done! Finalizing your preset...";
@@ -723,6 +744,10 @@ function startAIProgressAnimation() {
         
         if (uploadProgress) {
             uploadProgress.style.width = `${progress}%`;
+            console.log("Setting progress width to:", `${progress}%`);
+            
+            // Update the AI processing steps
+            updateAIProcessingStep(progress);
         }
     }, 500);
     
@@ -735,10 +760,31 @@ function startAIProgressAnimation() {
 
 // Function to stop AI progress animation (call this if there's an error or when complete)
 function stopAIProgressAnimation() {
+    console.log("Stopping AI progress animation");
+    
     if (window.aiProgressIntervals) {
         clearInterval(window.aiProgressIntervals.message);
         clearInterval(window.aiProgressIntervals.progress);
     }
+    
+    // Remove pulse animation
+    const uploadProgress = document.getElementById('uploadProgress');
+    if (uploadProgress) {
+        uploadProgress.classList.remove('pulse');
+    }
+    
+    // Remove typing animation
+    const statusText = document.getElementById('statusText');
+    if (statusText) {
+        statusText.classList.remove('typing-animation');
+    }
+    
+    // Complete all steps when done
+    const steps = document.querySelectorAll('.ai-step');
+    steps.forEach(step => {
+        step.classList.remove('active');
+        step.classList.add('completed');
+    });
 }
 
 // Function to show preset preview
@@ -1011,7 +1057,7 @@ function handlePaymentSuccess() {
 }
 
 // Function to download a preset
-function downloadPreset(presetId) {
+function downloadPreset(presetId, sessionId) {
     console.log("Downloading preset:", presetId);
     
     // Show loading state
@@ -1032,6 +1078,11 @@ function downloadPreset(presetId) {
             console.error("Error decoding token:", e);
         }
     }
+    
+    console.log("[Upload] Sending request to backend:", {
+        presetId: presetId,
+        userId: userId
+    });
     
     // Set FLASK_ENV to development in the query string to bypass payment in development
     const devMode = true; // Set to false in production
@@ -1066,11 +1117,7 @@ function downloadPreset(presetId) {
     fetch(`/preset/${presetId}/download${queryParams}`)
         .then(response => {
             if (!response.ok) {
-                if (response.status === 402) {
-                    throw new Error('Payment required to download this preset');
-                } else {
-                    throw new Error(`HTTP error! Status: ${response.status}`);
-                }
+                throw new Error(`HTTP error! status: ${response.status}`);
             }
             updateProgressBar(progressBar, 30, 'Download URL received');
             return response.json();
@@ -1081,11 +1128,19 @@ function downloadPreset(presetId) {
             if (data.xmp_url) {
                 updateProgressBar(progressBar, 50, 'Downloading XMP file...');
                 
+                // Clean up the URL if it has a trailing question mark
+                let xmpUrl = data.xmp_url;
+                if (xmpUrl.endsWith('?')) {
+                    xmpUrl = xmpUrl.slice(0, -1);
+                }
+                
+                console.log("Fetching XMP from URL:", xmpUrl);
+                
                 // Instead of using a link, fetch the XMP content directly
-                fetch(data.xmp_url)
+                fetch(xmpUrl)
                     .then(response => {
                         if (!response.ok) {
-                            throw new Error(`HTTP error! Status: ${response.status}`);
+                            throw new Error(`HTTP error! status: ${response.status}`);
                         }
                         updateProgressBar(progressBar, 75, 'Processing XMP file...');
                         return response.text(); // Get the XMP content as text
@@ -1181,7 +1236,9 @@ function updateProgressBar(progressBar, percentage, message, isError = false) {
     const text = progressBar.querySelector('.progress-text');
     
     if (bar) {
-        bar.style.width = percentage + '%';
+        bar.style.width = `${percentage}%`;
+        
+        // Add pulse animation when AI is processing (between 20% and 90%)
         if (isError) {
             bar.style.backgroundColor = '#ff4d4d';
         } else {
@@ -1191,12 +1248,25 @@ function updateProgressBar(progressBar, percentage, message, isError = false) {
     
     if (text) {
         text.textContent = message || `${percentage}%`;
+        
+        // Add typing animation when AI is processing
         if (isError) {
             text.style.color = '#ff4d4d';
         } else {
             text.style.color = '';
         }
     }
+    
+    // Show AI processing steps when we reach the AI processing stage
+    const aiProcessingContainer = document.getElementById('aiProcessingContainer');
+    if (aiProcessingContainer) {
+        if (percentage >= 20) {
+            aiProcessingContainer.style.display = 'block';
+        }
+    }
+    
+    // Update the active AI step based on the progress percentage
+    updateAIProcessingStep(percentage);
 }
 
 // Function to load user presets for the dashboard
@@ -1229,7 +1299,11 @@ function loadUserPresets() {
     fetch(`/user/${userId}/presets`)
         .then(response => {
             if (!response.ok) {
-                throw new Error(`HTTP error! Status: ${response.status}`);
+                if (response.status === 404) {
+                    throw new Error('User not found');
+                } else {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
             }
             return response.json();
         })
@@ -1256,10 +1330,18 @@ function loadUserPresets() {
             // Show error message
             const dashboardContent = document.querySelector('.dashboard-content');
             if (dashboardContent) {
+                let errorMessage = 'Error loading your presets. Please try again later.';
+                let errorIcon = 'fa-exclamation-circle';
+                
+                if (error.message === 'User not found') {
+                    errorMessage = 'Your user profile could not be found. Please try logging in again.';
+                    errorIcon = 'fa-user-slash';
+                }
+                
                 dashboardContent.innerHTML = `
                     <div class="error-message">
-                        <i class="fas fa-exclamation-circle"></i>
-                        <p>Error loading your presets. Please try again later.</p>
+                        <i class="fas ${errorIcon}"></i>
+                        <p>${errorMessage}</p>
                         <button onclick="loadUserPresets()" class="retry-button">Retry</button>
                     </div>
                 `;
@@ -1282,7 +1364,8 @@ function displayPresetsTable(presets) {
         // Image cell
         const imageCell = document.createElement('td');
         const img = document.createElement('img');
-        img.src = preset.image_url;
+        // Use our proxy endpoint for Supabase images to avoid CORS issues
+        img.src = `/proxy/supabase-image?url=${encodeURIComponent(preset.image_url)}`;
         img.alt = 'Preset Thumbnail';
         img.className = 'preset-thumbnail';
         img.onerror = function() {
@@ -1295,13 +1378,22 @@ function displayPresetsTable(presets) {
         const nameLink = document.createElement('a');
         nameLink.href = `preset-detail.html?id=${preset.id}`;
         nameLink.className = 'preset-name';
-        nameLink.textContent = `Preset ${preset.id.substring(0, 8)}`;
+        nameLink.textContent = preset.name || `Preset ${preset.id.substring(0, 8)}`;
         nameCell.appendChild(nameLink);
         
         // Date cell
         const dateCell = document.createElement('td');
-        const date = new Date(preset.created_at);
-        dateCell.textContent = date.toLocaleDateString();
+        if (preset.created_at) {
+            try {
+                const date = new Date(preset.created_at);
+                dateCell.textContent = date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+            } catch (e) {
+                console.error("Error formatting date:", e);
+                dateCell.textContent = preset.created_at;
+            }
+        } else {
+            dateCell.textContent = 'Unknown';
+        }
         
         // Actions cell
         const actionsCell = document.createElement('td');
@@ -1320,9 +1412,7 @@ function displayPresetsTable(presets) {
         deleteButton.className = 'action-button delete-button';
         deleteButton.innerHTML = '<i class="fas fa-trash"></i> Delete';
         deleteButton.onclick = function() {
-            if (confirm('Are you sure you want to delete this preset?')) {
-                deletePreset(preset.id);
-            }
+            deletePreset(preset.id);
         };
         
         actionsCell.appendChild(downloadButton);
@@ -1344,37 +1434,24 @@ function deletePreset(presetId) {
     fetch(`/preset/${presetId}`, {
         method: 'DELETE'
     })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error(`HTTP error! Status: ${response.status}`);
-            }
-            return response.json();
-        })
-        .then(data => {
-            // Reload the presets table
-            loadUserPresets();
-            
-            // Show success message
-            const successMessage = document.createElement('div');
-            successMessage.className = 'delete-success';
-            successMessage.innerHTML = `
-                <i class="fas fa-check-circle"></i>
-                <span>Preset deleted successfully!</span>
-            `;
-            
-            document.body.appendChild(successMessage);
-            
-            setTimeout(() => {
-                successMessage.classList.add('fade-out');
-                setTimeout(() => {
-                    document.body.removeChild(successMessage);
-                }, 500);
-            }, 3000);
-        })
-        .catch(error => {
-            console.error('Error deleting preset:', error);
-            alert('Error deleting preset. Please try again.');
-        });
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP error! Status: ${response.status}`);
+        }
+        return response.json();
+    })
+    .then(() => {
+        // Clear any cached data for this preset
+        localStorage.removeItem(`preset_${presetId}`);
+        localStorage.removeItem(`preset_image_${presetId}`);
+        localStorage.removeItem(`preset_metadata_${presetId}`);
+        
+        // Reload the presets table
+        loadUserPresets();
+    })
+    .catch(error => {
+        console.error('Error deleting preset:', error);
+    });
 }
 
 // Function to load preset details for the detail page
@@ -1401,10 +1478,14 @@ function loadPresetDetails() {
     }
     
     // Fetch preset details
-    fetch(`/preset/${presetId}/preview`)
+    fetch(`/preset/${presetId}`)
         .then(response => {
             if (!response.ok) {
-                throw new Error(`HTTP error! Status: ${response.status}`);
+                if (response.status === 404) {
+                    throw new Error('Preset not found');
+                } else {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
             }
             return response.json();
         })
@@ -1416,13 +1497,23 @@ function loadPresetDetails() {
             console.error('Error loading preset details:', error);
             
             if (presetContent) {
-                presetContent.innerHTML = `
-                    <div class="error-message">
-                        <i class="fas fa-exclamation-circle"></i>
-                        <p>Error loading preset details. Please try again later.</p>
-                        <a href="dashboard.html" class="back-link">Back to Dashboard</a>
-                    </div>
-                `;
+                if (error.message === 'Preset not found') {
+                    presetContent.innerHTML = `
+                        <div class="error-message">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            <p>The preset you're looking for could not be found. It may have been deleted or never existed.</p>
+                            <a href="dashboard.html" class="back-link">Back to Dashboard</a>
+                        </div>
+                    `;
+                } else {
+                    presetContent.innerHTML = `
+                        <div class="error-message">
+                            <i class="fas fa-exclamation-circle"></i>
+                            <p>Error loading preset details. Please try again later.</p>
+                            <a href="dashboard.html" class="back-link">Back to Dashboard</a>
+                        </div>
+                    `;
+                }
             }
         });
 }
@@ -1432,131 +1523,131 @@ function displayPresetDetails(preset, presetId) {
     const presetContent = document.getElementById('preset-content');
     if (!presetContent) return;
     
-    // Create the content structure similar to the screenshot
+    console.log("Displaying preset details:", preset);
+    
+    // Parse metadata if it's a string
+    let metadata = preset.metadata;
+    if (typeof metadata === 'string') {
+        try {
+            metadata = JSON.parse(metadata);
+            console.log("Parsed metadata:", metadata);
+        } catch (e) {
+            console.error("Error parsing metadata:", e);
+            metadata = {};
+        }
+    }
+    
+    // Use our proxy endpoint for Supabase images to avoid CORS issues
+    const proxyImageUrl = `/proxy/supabase-image?url=${encodeURIComponent(preset.image_url)}`;
+    console.log("Using proxy image URL:", proxyImageUrl);
+    
+    // Format the creation date if available
+    let creationDate = '';
+    if (preset.created_at) {
+        try {
+            const date = new Date(preset.created_at);
+            creationDate = date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+        } catch (e) {
+            console.error("Error formatting date:", e);
+            creationDate = preset.created_at;
+        }
+    }
+    
+    // Create the content structure
     presetContent.innerHTML = `
-        <h2>Your AI-Generated Preset</h2>
-        <div class="preview-container">
-            <div class="preview-image-container">
-                <img id="preview-image" src="${preset.image_url}" alt="Preview">
-            </div>
-            <div class="preview-details">
-                <div id="preview-adjustments" class="adjustments-list">
-                    <!-- Adjustments will be loaded here -->
+        <div class="preset-detail-container">
+            <div class="preset-header">
+                <h2>${preset.name || 'Your AI-Generated Preset'}</h2>
+                <div class="preset-metadata">
+                    <span class="preset-date">${creationDate ? 'Created on: ' + creationDate : ''}</span>
+                    ${preset.original_filename ? `<span class="preset-filename">Original file: ${preset.original_filename}</span>` : ''}
                 </div>
-                <div class="purchase-container">
-                    <button id="download-button" class="download-button">
-                        <i class="fas fa-download"></i> Download Preset
-                    </button>
+            </div>
+            
+            <div class="preset-content-grid">
+                <div class="preset-image-section">
+                    <div class="preset-image-container">
+                        <img src="${proxyImageUrl}" alt="Preset preview" class="preset-image">
+                    </div>
+                    <div class="preset-actions">
+                        <button onclick="downloadPreset('${presetId}')" class="primary-button">
+                            <i class="fas fa-download"></i> Download Preset
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="preset-info-container">
+                    <div class="adjustments-container">
+                        <h3>Preset Adjustments</h3>
+                        <div id="adjustments-table"></div>
+                    </div>
                 </div>
             </div>
         </div>
     `;
     
-    // Set up image error handling
-    const previewImage = document.getElementById('preview-image');
-    if (previewImage) {
-        previewImage.onerror = function() {
-            console.error("Failed to load image from URL:", preset.image_url);
-            this.src = 'data:image/svg+xml;charset=UTF-8,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200"><rect width="200" height="200" fill="%23f0f0f0"/><text x="50%" y="50%" font-family="Arial" font-size="14" text-anchor="middle" fill="%23999">Image not available</text></svg>';
-        };
-    }
-    
-    // Display the adjustments in a table format
-    const adjustmentsList = document.getElementById('preview-adjustments');
-    if (adjustmentsList && preset) {
-        // Create the table container
-        const tableContainer = document.createElement('div');
-        tableContainer.className = 'adjustments-table-container';
-        
-        // Create the table
-        const table = document.createElement('table');
-        table.className = 'adjustments-table';
-        
-        // Create table header
-        const thead = document.createElement('thead');
-        const headerRow = document.createElement('tr');
-        
-        // Define the adjustment categories we want to display
+    // Create and populate the adjustments table
+    const adjustmentsTable = document.getElementById('adjustments-table');
+    if (adjustmentsTable && metadata) {
+        // Define the categories we want to display as columns
         const categories = [
             { key: 'basic', label: 'Basic Adjustments' },
-            { key: 'color', label: 'Color Balance' },
+            { key: 'color', label: 'Color' },
             { key: 'detail', label: 'Detail' },
             { key: 'effects', label: 'Effects' }
         ];
         
-        // Add header cells for each category
-        categories.forEach(category => {
-            const th = document.createElement('th');
-            th.textContent = category.label;
-            headerRow.appendChild(th);
-        });
-        
-        thead.appendChild(headerRow);
-        table.appendChild(thead);
-        
-        // Create table body
-        const tbody = document.createElement('tbody');
+        // Create table structure
+        let tableHTML = `
+            <table class="adjustments-table">
+                <thead>
+                    <tr>
+                        ${categories.map(cat => `<th>${cat.label}</th>`).join('')}
+                    </tr>
+                </thead>
+                <tbody>
+        `;
         
         // Find the maximum number of adjustments in any category
         let maxRows = 0;
         categories.forEach(category => {
-            const categoryData = preset[category.key] || {};
+            const categoryData = metadata[category.key] || {};
             maxRows = Math.max(maxRows, Object.keys(categoryData).length);
         });
         
-        // Create rows for each adjustment
+        // Create rows
         for (let i = 0; i < maxRows; i++) {
-            const row = document.createElement('tr');
+            tableHTML += '<tr>';
             
             // Add cells for each category
             categories.forEach(category => {
-                const td = document.createElement('td');
-                const categoryData = preset[category.key] || {};
+                const categoryData = metadata[category.key] || {};
                 const keys = Object.keys(categoryData);
                 
+                tableHTML += '<td>';
                 if (i < keys.length) {
                     const key = keys[i];
                     const value = categoryData[key];
-                    
-                    // Create adjustment item
-                    const item = document.createElement('div');
-                    item.className = 'adjustment-item';
-                    
-                    const label = document.createElement('span');
-                    label.className = 'label';
-                    label.textContent = formatLabel(key);
-                    
-                    const valueSpan = document.createElement('span');
-                    valueSpan.className = 'value';
-                    valueSpan.textContent = formatValue(value);
-                    
-                    item.appendChild(label);
-                    item.appendChild(valueSpan);
-                    td.appendChild(item);
+                    tableHTML += `
+                        <div class="adjustment-item">
+                            <span class="label">${formatLabel(key)}</span>
+                            <span class="value">${formatValue(value)}</span>
+                        </div>
+                    `;
                 }
-                
-                row.appendChild(td);
+                tableHTML += '</td>';
             });
             
-            tbody.appendChild(row);
+            tableHTML += '</tr>';
         }
         
-        table.appendChild(tbody);
-        tableContainer.appendChild(table);
-        adjustmentsList.appendChild(tableContainer);
-    }
-    
-    // Set up download button
-    const downloadButton = document.getElementById('download-button');
-    if (downloadButton) {
-        downloadButton.onclick = function() {
-            downloadPreset(presetId);
-        };
+        tableHTML += '</tbody></table>';
+        adjustmentsTable.innerHTML = tableHTML;
     }
 }
 
 // Add these functions to handle local storage of the last uploaded image and preset
-function saveLastUploadedImage(imageUrl, presetId, previewData) {
+function saveLastUploadedImage(imageUrl, presetId, presetData) {
     // Validate the image URL
     if (!imageUrl || typeof imageUrl !== 'string' || !imageUrl.startsWith('http')) {
         console.error("Invalid image URL:", imageUrl);
@@ -1566,7 +1657,7 @@ function saveLastUploadedImage(imageUrl, presetId, previewData) {
     const lastUpload = {
         imageUrl: imageUrl,
         presetId: presetId,
-        previewData: previewData,
+        previewData: presetData,
         timestamp: new Date().getTime()
     };
     localStorage.setItem('lastUploadedImage', JSON.stringify(lastUpload));
@@ -1699,3 +1790,253 @@ function clearMockStorageData() {
         }
     }
 }
+
+// Function to update the active AI processing step
+function updateAIProcessingStep(percentage) {
+    console.log("Updating AI processing step for percentage:", percentage);
+    
+    // Get all steps
+    const steps = document.querySelectorAll('.ai-step');
+    if (!steps || steps.length === 0) {
+        console.warn("No AI steps found in the DOM");
+        return;
+    }
+    
+    // Define percentage thresholds for each step
+    const thresholds = [
+        { step: 'upload', min: 0, max: 20 },
+        { step: 'analyze', min: 20, max: 40 },
+        { step: 'lighting', min: 40, max: 60 },
+        { step: 'color', min: 60, max: 75 },
+        { step: 'generate', min: 75, max: 90 },
+        { step: 'finalize', min: 90, max: 100 }
+    ];
+    
+    // Find the current active step based on percentage
+    let activeStep = null;
+    for (const threshold of thresholds) {
+        if (percentage >= threshold.min && percentage < threshold.max) {
+            activeStep = threshold.step;
+            break;
+        }
+    }
+    
+    console.log("Active step determined to be:", activeStep);
+    
+    // Update step classes
+    steps.forEach(step => {
+        const stepName = step.getAttribute('data-step');
+        
+        // Remove all active classes first
+        step.classList.remove('active');
+        
+        // Find the index of this step and the active step
+        const stepIndex = thresholds.findIndex(t => t.step === stepName);
+        const activeIndex = thresholds.findIndex(t => t.step === activeStep);
+        
+        if (stepIndex === -1 || activeIndex === -1) {
+            console.warn(`Could not find index for step: ${stepName} or active step: ${activeStep}`);
+            return;
+        }
+        
+        // Mark steps as completed if they come before the active step
+        if (stepIndex < activeIndex) {
+            step.classList.remove('active');
+            step.classList.add('completed');
+        } 
+        // Mark the active step
+        else if (stepName === activeStep) {
+            step.classList.add('active');
+            step.classList.remove('completed');
+        } 
+        // Reset steps that come after the active step
+        else {
+            step.classList.remove('active', 'completed');
+        }
+    });
+    
+    // Show the AI processing container when we're in the AI processing phase
+    const aiProcessingContainer = document.getElementById('aiProcessingContainer');
+    if (aiProcessingContainer) {
+        if (percentage >= 20) {
+            aiProcessingContainer.style.display = 'block';
+        }
+    }
+}
+
+// Function to check if user is authenticated
+function isAuthenticated() {
+    return googleUser !== null;
+}
+
+// Function to initialize image upload functionality
+function initializeImageUpload() {
+    const uploadSection = document.getElementById('upload-section');
+    if (!uploadSection) return;
+    
+    // Hide upload section if not authenticated
+    if (!isAuthenticated()) {
+        uploadSection.innerHTML = `
+            <div class="auth-required">
+                <i class="fas fa-lock"></i>
+                <h2>Sign in Required</h2>
+                <p>Please sign in with Google to create presets.</p>
+                <button onclick="initiateGoogleSignIn()" class="signin-button">
+                    <i class="fab fa-google"></i> Sign in with Google
+                </button>
+            </div>
+        `;
+        return;
+    }
+    
+    // Show upload interface if authenticated
+    uploadSection.innerHTML = `
+        <div class="upload-container">
+            <div class="upload-box" id="upload-box">
+                <i class="fas fa-cloud-upload-alt"></i>
+                <p>Drag & drop your photo here or click to select</p>
+                <input type="file" id="file-input" accept="image/*" style="display: none;">
+            </div>
+            <button id="create-preset" class="create-button" style="display: none;">
+                <i class="fas fa-magic"></i> Create Preset
+            </button>
+        </div>
+        <div id="progress-container" class="progress-container" style="display: none;">
+            <!-- Progress bar will be added here -->
+        </div>
+    `;
+    
+    setupUploadHandlers();
+}
+
+// Function to setup upload handlers
+function setupUploadHandlers() {
+    const uploadBox = document.getElementById('upload-box');
+    const fileInput = document.getElementById('file-input');
+    const createButton = document.getElementById('create-preset');
+    
+    if (!uploadBox || !fileInput || !createButton) return;
+    
+    uploadBox.addEventListener('click', () => fileInput.click());
+    uploadBox.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        uploadBox.classList.add('dragover');
+    });
+    uploadBox.addEventListener('dragleave', () => {
+        uploadBox.classList.remove('dragover');
+    });
+    uploadBox.addEventListener('drop', (e) => {
+        e.preventDefault();
+        uploadBox.classList.remove('dragover');
+        handleFileSelect(e);
+    });
+    
+    fileInput.addEventListener('change', handleFileSelect);
+    createButton.addEventListener('click', function(e) {
+        if (!isAuthenticated()) {
+            e.preventDefault();
+            alert('Please sign in to upload images');
+            return;
+        }
+        handleCreatePresetClick();
+    });
+}
+
+function displayPresetDetails(preset) {
+    const adjustmentsContainer = document.querySelector('.adjustments-container');
+    
+    // Organize adjustments into categories
+    const categories = {
+        basic: {},
+        tone: {},
+        color: {},
+        effects: {}
+    };
+    
+    // Sort adjustments into categories
+    if (preset && preset.adjustments) {
+        Object.entries(preset.adjustments).forEach(([key, value]) => {
+            if (key.includes('exposure') || key.includes('contrast') || key.includes('highlights') || key.includes('shadows')) {
+                categories.basic[key] = value;
+            } else if (key.includes('tone') || key.includes('white') || key.includes('black')) {
+                categories.tone[key] = value;
+            } else if (key.includes('color') || key.includes('tint') || key.includes('vibrance') || key.includes('saturation')) {
+                categories.color[key] = value;
+            } else {
+                categories.effects[key] = value;
+            }
+        });
+    }
+    
+    // Create tabs container
+    const tabsHtml = `
+        <div class="tabs-container">
+            <div class="tabs-nav">
+                <button class="tab-button active" data-tab="basic">Basic</button>
+                <button class="tab-button" data-tab="tone">Tone</button>
+                <button class="tab-button" data-tab="color">Color</button>
+                <button class="tab-button" data-tab="effects">Effects</button>
+            </div>
+            <div id="basic" class="tab-content active">
+                <table class="tab-table">
+                    ${generateTabContent(categories.basic)}
+                </table>
+            </div>
+            <div id="tone" class="tab-content">
+                <table class="tab-table">
+                    ${generateTabContent(categories.tone)}
+                </table>
+            </div>
+            <div id="color" class="tab-content">
+                <table class="tab-table">
+                    ${generateTabContent(categories.color)}
+                </table>
+            </div>
+            <div id="effects" class="tab-content">
+                <table class="tab-table">
+                    ${generateTabContent(categories.effects)}
+                </table>
+            </div>
+        </div>
+    `;
+    
+    adjustmentsContainer.innerHTML = tabsHtml;
+    
+    // Add tab switching functionality
+    const tabButtons = document.querySelectorAll('.tab-button');
+    tabButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            // Remove active class from all buttons and contents
+            tabButtons.forEach(btn => btn.classList.remove('active'));
+            
+            // Add active class to clicked button and corresponding content
+            button.classList.add('active');
+            
+            // Hide all tab contents
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            
+            // Show the corresponding tab content
+            const tabId = button.getAttribute('data-tab');
+            document.getElementById(`${tabId}-tab`).classList.add('active');
+        });
+    });
+}
+
+function generateTabContent(adjustments) {
+    if (!adjustments || Object.keys(adjustments).length === 0) {
+        return '<tr><td colspan="2" style="text-align: center; color: #666;">No adjustments in this category</td></tr>';
+    }
+    
+    return Object.entries(adjustments)
+        .map(([key, value]) => `
+            <tr>
+                <td>${formatAdjustmentName(key)}</td>
+                <td>${formatAdjustmentValue(value)}</td>
+            </tr>
+        `).join('');
+}
+
+// Add a favicon link to prevent 404
+document.head.innerHTML += '<link rel="icon" type="image/x-icon" href="data:image/x-icon;base64,AAABAAEAEBAAAAEAIABoBAAAFgAAACgAAAAQAAAAIAAAAAEAIAAAAAAAAAQAABILAAASCwAAAAAAAAAAAAD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A">';

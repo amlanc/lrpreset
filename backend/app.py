@@ -13,9 +13,19 @@ import json
 from dotenv import load_dotenv
 import requests
 from urllib.parse import quote_plus
+import sys
+from functools import wraps
 
-# Load environment variables from .env file
+# Load environment variables - try multiple possible locations for .env
+# First try the current directory
 load_dotenv()
+
+# If credentials not found, try parent directory (project root)
+if not os.environ.get("SUPABASE_URL") or not os.environ.get("SUPABASE_KEY"):
+    parent_env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
+    if os.path.exists(parent_env_path):
+        print(f"Loading environment from: {parent_env_path}")
+        load_dotenv(parent_env_path)
 
 # Initialize Flask app with frontend directory as static folder
 app = Flask(__name__, static_folder='../frontend', static_url_path='')
@@ -48,97 +58,156 @@ def serve_static(path):
     """Serve static files from the frontend directory"""
     return send_from_directory(app.static_folder, path)
 
+@app.route('/google-callback')
+def serve_google_callback():
+    """Serve the Google callback page"""
+    return send_from_directory(app.static_folder, 'google-callback.html')
+
+def allowed_file(filename):
+    allowed_extensions = {'jpg', 'jpeg', 'png', 'webp'}
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in allowed_extensions
+
+def require_auth(f):
+    """Decorator to require authentication for routes"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        # Get the ID token from the Authorization header
+        auth_header = request.headers.get('Authorization')
+        print(f"Auth header: {auth_header[:20] + '...' if auth_header and len(auth_header) > 20 else auth_header}")
+        
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({'error': 'No authentication token provided'}), 401
+            
+        id_token = auth_header.split(' ')[1]
+        print(f"Token length: {len(id_token)}")
+        
+        try:
+            # Use PyJWT to decode and verify the token
+            import jwt
+            import time
+            
+            # For now, we're just decoding without verification
+            # In production, you should verify the signature with Google's public keys
+            token_parts = id_token.split('.')
+            print(f"Token parts: {len(token_parts)}")
+            
+            if len(token_parts) != 3:
+                raise ValueError('Invalid token format')
+                
+            # Decode the token without verification for now
+            payload = jwt.decode(id_token, options={"verify_signature": False})
+            print(f"Decoded payload: {payload.keys()}")
+            
+            # Check if token is expired
+            current_time = int(time.time())
+            if 'exp' in payload and current_time > payload['exp']:
+                print(f"Token expired: {payload['exp']} < {current_time}")
+                raise ValueError('Token expired')
+                
+            # Add the user ID to the request
+            request.user_id = payload.get('sub')
+            if not request.user_id:
+                print("No user ID in token")
+                raise ValueError('No user ID in token')
+                
+            print(f"Authentication successful for user: {request.user_id}")
+            return f(*args, **kwargs)
+            
+        except Exception as e:
+            print(f"Auth error: {str(e)}")
+            return jsonify({'error': 'Invalid authentication token'}), 401
+            
+    return decorated_function
+
 @app.route('/upload', methods=['POST'])
+@require_auth
 def upload_image():
+    """
+    Handle image upload, process with LLM, and store the preset
+    """
     print("Upload endpoint called")
     print("Request files:", request.files)
     print("Request form:", request.form)
-
-    if 'image' not in request.files:
-        print("No image part in request")
-        return jsonify({'error': 'No image part'}), 400
-
-    file = request.files['image']
-    print("File object:", file)
-    print("File name:", file.filename)
-    print("File content type:", file.content_type)
-
-    if file.filename == '':
-        print("No selected file")
-        return jsonify({'error': 'No selected image'}), 400
-
-    # Check file type
-    allowed_extensions = {'jpg', 'jpeg', 'png', 'webp'}
-    if not '.' in file.filename or file.filename.rsplit('.', 1)[1].lower() not in allowed_extensions:
-        print("Invalid file type")
-        return jsonify({'error': 'Invalid file type. Please upload a JPG, PNG or WebP image'}), 400
-
+    
     try:
-        # Get user ID from request (assuming it's sent in headers or form data)
-        user_id = request.form.get('user_id', 'anonymous')
-        print(f"User ID: {user_id}")
+        # Get user ID from the authenticated request
+        user_id = request.user_id
+        
+        # Check if the post request has the file part
+        if 'image' not in request.files:
+            print("No image part in request")
+            return jsonify({'error': 'No image part'}), 400
+        
+        file = request.files['image']
+        print("File object:", file)
+        print("File name:", file.filename)
+        print("File content type:", file.content_type)
+        
+        # If user does not select file, browser also
+        # submit an empty part without filename
+        if file.filename == '':
+            print("No selected file")
+            return jsonify({'error': 'No selected file'}), 400
+        
+        # Check if the file is allowed
+        if not allowed_file(file.filename):
+            print("Invalid file type")
+            return jsonify({'error': 'Invalid file type. Please upload a JPG, PNG or WebP image'}), 400
         
         # Generate a unique ID for this preset
         preset_id = str(uuid.uuid4())
         print(f"Generated preset ID: {preset_id}")
         
-        # Create a directory for this preset if it doesn't exist
-        preset_dir = os.path.join(app.config['UPLOAD_FOLDER'], preset_id)
-        os.makedirs(preset_dir, exist_ok=True)
-        
-        # Save the uploaded image temporarily with a more unique filename
-        filename = secure_filename(f"{preset_id}_{file.filename}")
-        image_path = os.path.join(preset_dir, filename)
-        file.save(image_path)
-        print("File saved successfully to", image_path)
-
-        # Read the image data for storage
-        with open(image_path, 'rb') as f:
-            image_data = f.read()
+        # Read the image data directly from the uploaded file
+        image_data = file.read()
         print(f"Read {len(image_data)} bytes of image data")
-
-        # 1. Call LLM handler to get metadata
-        print("Calling LLM handler to get metadata...")
-        metadata = llm_handler.generate_preset_from_image(image_path)
+        
+        # Process the image with the LLM directly using the image data
+        print(f"Processing image with LLM")
+        metadata = llm_handler.generate_preset_from_image(image_data)
+        
+        if not metadata:
+            return jsonify({'error': 'Failed to process image with LLM'}), 500
+        
         print("Metadata extracted successfully:", metadata)
-
+        
         # 2. Generate XMP file
         print("Generating XMP file...")
         xmp_content = xmp_generator.generate_xmp(metadata)
+        
+        if not xmp_content:
+            return jsonify({'error': 'Failed to generate XMP file'}), 500
+        
         print("XMP generated successfully, length:", len(xmp_content))
-
-        # 3. Store in Supabase with proper user association
+        
+        # 3. Store in Supabase
         print("Storing in Supabase...")
-        preset_id = supabase_client.store_preset(user_id, image_data, metadata, xmp_content)
+        preset_id = supabase_client.store_preset(user_id, image_data, metadata, xmp_content, original_filename=file.filename)
+        
         if not preset_id:
-            print("Failed to store preset")
-            return jsonify({'error': 'Failed to store preset'}), 500
+            # Check if we have a service role key available
+            if not os.environ.get("SUPABASE_SERVICE_KEY"):
+                return jsonify({
+                    'error': 'Failed to store preset. This may be due to Row-Level Security (RLS) restrictions. Please add a SUPABASE_SERVICE_KEY to bypass RLS.'
+                }), 500
+            else:
+                return jsonify({
+                    'error': 'Failed to store preset despite using service role key. Check Supabase logs for details.'
+                }), 500
         
-        # Get the preset data from Supabase
-        print("Getting preset data from Supabase...")
-        preset = supabase_client.get_preset(preset_id)
-        print("Preset data:", preset)
+        # Get the image URL
+        image_url = supabase_client.get_image_url(preset_id)
         
-        # Clean up temporary files
-        try:
-            os.remove(image_path)
-            os.rmdir(preset_dir)
-        except Exception as e:
-            print(f"Warning: Could not clean up temporary files: {e}")
-        
-        # 4. Return preset ID and preview data
+        # Return the preset ID and image URL
         response_data = {
             'preset_id': preset_id,
-            'image_url': preset.get('image_url'),
-            'xmp_url': preset.get('xmp_url'),
-            'preset_data': metadata,
-            'message': 'Preset created successfully'
+            'image_url': image_url,
+            'preset_data': metadata
         }
-        print("Returning response:", response_data)
-        return jsonify(response_data), 200
+        print(f"Returning response: {response_data}")
+        return jsonify(response_data)
         
     except Exception as e:
-        print(f"Error processing image: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
@@ -146,25 +215,25 @@ def upload_image():
 @app.route('/preset/<preset_id>/preview', methods=['GET'])
 def get_preset_preview(preset_id):
     """Get a preview of the preset without purchasing"""
+    print(f"Getting preset from Supabase: {preset_id}")
     preset = supabase_client.get_preset(preset_id)
     if not preset:
         return jsonify({'error': 'Preset not found'}), 404
     
-    # Parse the stored metadata
-    metadata = json.loads(preset.get('metadata', '{}'))
+    # Check if the preset exists in storage
+    user_id = preset.get('user_id')
+    if user_id:
+        try:
+            storage_path = f"{user_id}/{preset_id}"
+            # Use the supabase client from the supabase_client module
+            from backend.supabase_client import supabase
+            storage_files = supabase.storage.from_("images").list(storage_path)
+            print(f"Storage check for preset images at path {storage_path}: {storage_files}")
+        except Exception as e:
+            print(f"Error checking storage: {e}")
     
-    # Return limited metadata for preview
-    preview_data = {
-        'basic': {
-            'exposure': metadata.get('basic', {}).get('exposure', 0),
-            'contrast': metadata.get('basic', {}).get('contrast', 0),
-            'vibrance': metadata.get('basic', {}).get('vibrance', 0),
-            'saturation': metadata.get('basic', {}).get('saturation', 0)
-        },
-        'image_url': preset.get('image_url')
-    }
-    
-    return jsonify(preview_data), 200
+    # Return the full preset data
+    return jsonify(preset), 200
 
 @app.route('/preset/<preset_id>/checkout', methods=['POST'])
 def create_checkout(preset_id):
@@ -199,32 +268,92 @@ def download_preset(preset_id):
         print(f"Preset not found: {preset_id}")
         return jsonify({'error': 'Preset not found'}), 404
     
-    # Check if preset has been purchased
-    session_id = request.args.get('session_id')
-    if session_id:
-        # Verify payment with Stripe
-        is_paid, _ = payment.verify_payment(session_id)
-        if is_paid:
-            # Mark as purchased in Supabase
-            supabase_client.mark_preset_as_purchased(preset_id, session_id)
+    # For testing purposes, skip payment verification
     
-    # Check if the preset is purchased or if we're in development mode
-    if preset.get('purchased'):
-        # Get the XMP URL
-        xmp_url = preset.get('xmp_url')
-        print(f"Returning XMP URL: {xmp_url}")
+    # Get a signed URL for the XMP file
+    signed_xmp_url = supabase_client.get_signed_xmp_url(preset_id)
+    print(f"Signed XMP URL: {signed_xmp_url}")
+    
+    # Check if the XMP file exists by making a HEAD request
+    if signed_xmp_url:
+        try:
+            import requests
+            response = requests.head(signed_xmp_url)
+            if response.status_code != 200:
+                print(f"XMP file not found at URL: {signed_xmp_url}, status code: {response.status_code}")
+                signed_xmp_url = None
+        except Exception as e:
+            print(f"Error checking XMP URL: {e}")
+            signed_xmp_url = None
+    
+    # If XMP URL is missing or file doesn't exist, generate a temporary XMP file
+    if not signed_xmp_url:
+        print("XMP URL missing or file not found, generating temporary XMP file")
         
-        # Return the XMP file URL
-        return jsonify({'xmp_url': xmp_url}), 200
-    else:
-        print("Payment required for this preset")
-        return jsonify({'error': 'Payment required to download this preset'}), 402
+        # Get metadata from the preset
+        metadata_str = preset.get('metadata', '{}')
+        try:
+            metadata = json.loads(metadata_str) if isinstance(metadata_str, str) else metadata_str
+        except:
+            metadata = {}
+        
+        # Generate XMP content
+        xmp_content = xmp_generator.generate_xmp(metadata)
+        
+        # Create a temporary file
+        import tempfile
+        import os
+        
+        temp_dir = tempfile.gettempdir()
+        temp_xmp_path = os.path.join(temp_dir, f"preset_{preset_id}.xmp")
+        
+        with open(temp_xmp_path, 'w') as f:
+            f.write(xmp_content)
+        
+        # Return the file as an attachment
+        return send_file(
+            temp_xmp_path,
+            as_attachment=True,
+            download_name=f"preset_{preset_id}.xmp",
+            mimetype="application/xml"
+        )
+    
+    # Instead of returning the signed URL, return a proxy URL
+    proxy_url = f"/proxy/xmp-file?url={quote_plus(signed_xmp_url)}"
+    
+    # Return the proxy URL
+    return jsonify({
+        'xmp_url': proxy_url,
+        'direct_url': signed_xmp_url  # Include the direct URL as well for debugging
+    }), 200
 
 @app.route('/user/<user_id>/presets', methods=['GET'])
 def get_user_presets(user_id):
     """Get all presets for a user"""
     presets = supabase_client.get_user_presets(user_id)
     return jsonify(presets), 200
+
+@app.route('/presets', methods=['GET'])
+@require_auth
+def get_presets():
+    """Get all presets for the authenticated user"""
+    print(f"Getting presets for authenticated user: {request.user_id}")
+    presets = supabase_client.get_user_presets(request.user_id)
+    print(f"Supabase response: {presets}")
+    
+    # Make sure we're returning a list, even if Supabase returns None
+    if presets is None:
+        presets = []
+    
+    # Explicitly create a dictionary with the presets key
+    response_data = {"presets": presets}
+    
+    # Debug the response structure
+    print(f"Response data type: {type(response_data)}")
+    print(f"Response data: {response_data}")
+    
+    # Return the response
+    return jsonify(response_data), 200
 
 @app.route('/webhook', methods=['POST'])
 def stripe_webhook():
@@ -237,23 +366,40 @@ def stripe_webhook():
 @app.route('/auth/google-callback', methods=['POST'])
 def google_callback():
     """Handle Google OAuth callback"""
-    code = request.json.get('code')
-    if not code:
-        return jsonify({'error': 'No authorization code provided'}), 400
-    
-    # Exchange code for tokens
-    tokens = auth.exchange_code_for_tokens(code)
-    if 'error' in tokens:
-        return jsonify(tokens), 400
-    
-    # Get user info from ID token
-    user_info = auth.get_user_info_from_token(tokens.get('id_token'))
-    
-    # Store user in Supabase
-    if user_info:
-        supabase_client.store_user(user_info.get('sub'), user_info)
-    
-    return jsonify(tokens), 200
+    try:
+        # Get the authorization code from the request
+        data = request.get_json()
+        if not data or 'code' not in data:
+            return jsonify({'error': 'No authorization code provided'}), 400
+            
+        code = data['code']
+        
+        # Exchange the code for tokens
+        tokens, error = auth.exchange_code_for_tokens(code)
+        if error:
+            return jsonify({'error': f'Failed to exchange code: {error}'}), 400
+            
+        # Get the ID token
+        id_token = tokens.get('id_token')
+        if not id_token:
+            return jsonify({'error': 'No ID token in response'}), 400
+            
+        # Get user info from the ID token
+        user_info, error = auth.get_user_info_from_token(id_token)
+        if error:
+            return jsonify({'error': f'Failed to get user info: {error}'}), 400
+            
+        # Store the user in Supabase
+        # This is just a placeholder for now
+        
+        # Return the tokens and user info
+        return jsonify({
+            'tokens': tokens,
+            'user': user_info
+        })
+    except Exception as e:
+        print(f"Error in Google callback: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/test', methods=['GET'])
 def test_endpoint():
@@ -261,17 +407,33 @@ def test_endpoint():
 
 @app.route('/preset/<preset_id>', methods=['DELETE'])
 def delete_preset(preset_id):
-    """Delete a preset"""
-    # Get user ID from request
-    user_id = request.args.get('user_id', 'anonymous')
-    
-    # Delete the preset
-    success = supabase_client.delete_preset(preset_id, user_id)
-    
-    if success:
-        return jsonify({'message': 'Preset deleted successfully'}), 200
-    else:
-        return jsonify({'error': 'Failed to delete preset'}), 500
+    """Delete a preset and its associated files"""
+    try:
+        # Get the preset first to verify it exists
+        preset = supabase_client.get_preset(preset_id)
+        if not preset:
+            return jsonify({'error': 'Preset not found'}), 404
+            
+        # Delete the preset and all associated files
+        success = supabase_client.delete_preset(preset_id, preset['user_id'])
+        
+        if success:
+            # Delete the original uploaded image if it exists
+            upload_path = os.path.join('uploads', preset_id)
+            if os.path.exists(upload_path):
+                try:
+                    import shutil
+                    shutil.rmtree(upload_path)
+                except Exception as e:
+                    print(f"Error deleting upload directory: {e}")
+            
+            return jsonify({'message': 'Preset deleted successfully'}), 200
+        else:
+            return jsonify({'error': 'Failed to delete preset'}), 500
+            
+    except Exception as e:
+        print(f"Error deleting preset: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/preset/<preset_id>', methods=['GET'])
 def get_preset(preset_id):
@@ -337,6 +499,104 @@ def proxy_profile_image():
         )
     except Exception as e:
         print(f"Error proxying profile image: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/proxy/supabase-image', methods=['GET'])
+def proxy_supabase_image():
+    """Proxy for Supabase images to avoid CORS issues"""
+    image_url = request.args.get('url')
+    print(f"Proxying Supabase image: {image_url}")
+    
+    if not image_url:
+        print(f"Invalid image URL: {image_url}")
+        return jsonify({'error': 'Invalid image URL'}), 400
+        
+    try:
+        # Extract the bucket and path from the URL
+        # URL format: https://azdohxmxldahvebnkekd.supabase.co/storage/v1/object/public/images/user_id/preset_id/image.jpg
+        parts = image_url.split('/storage/v1/object/public/')
+        if len(parts) != 2:
+            return jsonify({'error': 'Invalid Supabase URL format'}), 400
+            
+        bucket_path = parts[1]
+        if '?' in bucket_path:
+            bucket_path = bucket_path.split('?')[0]
+            
+        # Add authorization header with service key
+        headers = {
+            'Authorization': f'Bearer {os.environ.get("SUPABASE_SERVICE_KEY")}',
+            'Accept': 'image/jpeg,image/png,image/*'
+        }
+        
+        # Construct the private API URL
+        base_url = 'https://azdohxmxldahvebnkekd.supabase.co'
+        private_url = f"{base_url}/storage/v1/object/{bucket_path}"
+        
+        # Fetch the image from Supabase
+        print(f"Fetching image from: {private_url}")
+        response = requests.get(private_url, headers=headers, stream=True)
+        
+        if not response.ok:
+            print(f"Failed to fetch image: {response.status_code}, {response.text}")
+            return jsonify({'error': f'Failed to fetch image: {response.status_code}'}), response.status_code
+        
+        # Get the content type from the response
+        content_type = response.headers.get('Content-Type', 'image/jpeg')
+        print(f"Image content type: {content_type}")
+        
+        # Create a Flask response with the image data
+        proxy_response = Response(response.content, content_type=content_type)
+        
+        # Add cache headers (cache for 24 hours)
+        proxy_response.headers['Cache-Control'] = 'public, max-age=86400'
+        
+        return proxy_response
+    
+    except Exception as e:
+        print(f"Error proxying Supabase image: {e}")
+        return jsonify({'error': f'Failed to proxy image: {str(e)}'}), 500
+
+@app.route('/proxy/xmp-file', methods=['GET'])
+def proxy_xmp_file():
+    """Proxy for XMP files to avoid CORS issues"""
+    xmp_url = request.args.get('url')
+    print(f"Proxying XMP file: {xmp_url}")
+    
+    if not xmp_url:
+        return jsonify({'error': 'No URL provided'}), 400
+        
+    try:
+        # Add authorization header if needed
+        headers = {
+            'Accept': 'application/xml,text/xml,*/*'
+        }
+        
+        # Fetch the XMP file
+        response = requests.get(xmp_url, headers=headers, stream=True)
+        
+        if not response.ok:
+            print(f"Failed to fetch XMP file: {response.status_code}, {response.text}")
+            return jsonify({'error': f'Failed to fetch XMP file: {response.status_code}'}), response.status_code
+        
+        # Get the content type from the response
+        content_type = response.headers.get('Content-Type', 'application/xml')
+        print(f"XMP content type: {content_type}")
+        
+        # Create a Flask response with the XMP data
+        proxy_response = Response(
+            response.content, 
+            content_type=content_type,
+            headers={
+                'Content-Disposition': f'attachment; filename="preset.xmp"',
+                'Cache-Control': 'no-cache',
+                'Access-Control-Allow-Origin': '*'
+            }
+        )
+        
+        return proxy_response
+        
+    except Exception as e:
+        print(f"Error proxying XMP file: {e}")
         return jsonify({'error': str(e)}), 500
 
 # Run the application

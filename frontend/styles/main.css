@@ -1,0 +1,5 @@
+/* Import all CSS modules */
+@import 'layout.css';
+@import 'buttons.css';
+@import 'upload.css';
+@import 'progress.css';

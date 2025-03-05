@@ -1,0 +1,46 @@
+/* Button styles */
+.button-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    margin: 20px 0;
+}
+
+.upload-button, .generate-button, .download-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 160px;
+    padding: 12px 28px;
+    background-color: #4285f4;
+    color: white;
+    border: none;
+    border-radius: 30px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-size: 16px;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.upload-button:hover, .generate-button:hover, .download-button:hover {
+    background-color: #3367d6;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.upload-button i {
+    margin-right: 0.5rem;
+}
+
+.download-button {
+    background-color: #4CAF50;
+}
+
+.download-button:hover {
+    background-color: #45a049;
+}
