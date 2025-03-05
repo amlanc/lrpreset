@@ -4,8 +4,9 @@ import requests
 import json
 from PIL import Image
 import io
-import random
 from dotenv import load_dotenv
+import tempfile
+import sys
 
 # Load environment variables
 load_dotenv()
@@ -18,50 +19,85 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 USE_GEMINI = True  # Set to False to use GPT-4V instead
 GEMINI_MODEL = "gemini-2.0-flash"  # Updated to use the newer model
 
+# Maximum payload size for Gemini API (20MB in bytes)
+MAX_PAYLOAD_SIZE = 20 * 1024 * 1024  # 20MB
+
+def resize_image_if_needed(image_data, max_size=MAX_PAYLOAD_SIZE, quality=85):
+    """
+    Resize an image if its estimated payload size is too large for the API.
+    
+    Args:
+        image_data (bytes): The original image data
+        max_size (int): Maximum allowed payload size in bytes
+        quality (int): JPEG quality for resized image (1-100)
+        
+    Returns:
+        bytes: Resized image data if needed, otherwise original image data
+    """
+    # Calculate estimated payload size (base64 encoding increases size by ~33%)
+    estimated_payload_size = len(image_data) * 1.33
+    
+    # If the image is already small enough, return it as is
+    if estimated_payload_size < max_size * 0.8:  # Using 80% as a buffer
+        print(f"Image size is already within limits: {len(image_data)/1024/1024:.2f}MB")
+        return image_data
+    
+    # Open the image using PIL
+    img = Image.open(io.BytesIO(image_data))
+    
+    # Start with original dimensions
+    width, height = img.size
+    
+    # Calculate target size - aim for 70% of max to leave room for other payload elements
+    target_size = int(max_size * 0.7)
+    
+    # Iteratively reduce size until we're under the target
+    resized_data = image_data
+    resize_count = 0
+    max_attempts = 5
+    
+    while len(resized_data) * 1.33 > target_size and resize_count < max_attempts:
+        # Reduce dimensions by 20% each time
+        width = int(width * 0.8)
+        height = int(height * 0.8)
+        
+        # Resize the image
+        resized_img = img.resize((width, height), Image.LANCZOS)
+        
+        # Convert to JPEG with the specified quality
+        buffer = io.BytesIO()
+        resized_img.save(buffer, format="JPEG", quality=quality)
+        resized_data = buffer.getvalue()
+        
+        print(f"Resized image to {width}x{height}, new size: {len(resized_data)/1024/1024:.2f}MB")
+        resize_count += 1
+        
+        # If we're still too big after several attempts, reduce quality
+        if resize_count == 3 and len(resized_data) * 1.33 > target_size:
+            quality = max(quality - 15, 60)  # Reduce quality but not below 60
+    
+    if len(resized_data) * 1.33 > max_size:
+        print(f"WARNING: Image still too large after resizing: {len(resized_data)/1024/1024:.2f}MB")
+    else:
+        print(f"Successfully resized image from {len(image_data)/1024/1024:.2f}MB to {len(resized_data)/1024/1024:.2f}MB")
+    
+    return resized_data
+
 def get_image_metadata(image_path):
     """
     Extract metadata from an image using LLM.
-    For development, return mock data.
     """
     print(f"Getting metadata for image: {image_path}")
     
-    # For development, return mock data
-    # mock_metadata = {
-    #     "basic": {
-    #         "exposure": 0.3,
-    #         "contrast": 15,
-    #         "highlights": -30,
-    #         "shadows": 20,
-    #         "whites": 0,
-    #         "blacks": 10,
-    #         "clarity": 5,
-    #         "vibrance": 0,
-    #         "saturation": 5,
-    #         "dehaze": 10
-    #     },
-    #     "color": {
-    #         "temperature": 6600,
-    #         "tint": 5,
-    #         "vibrance": 0,
-    #         "saturation": 5
-    #     },
-    #     "detail": {
-    #         "sharpness": 40,
-    #         "noise_reduction": 5,
-    #         "color_noise_reduction": 10,
-    #         "detail": 50,
-    #         "masking": 20,
-    #         "radius": 1
-    #     },
-    #     "effects": {
-    #         "amount": 0,
-    #         "feather": 50,
-    #         "midpoint": 50,
-    #         "roundness": 0
-    #     }
-    # }
-    # print("Generated mock metadata")
-    # return mock_metadata
+    # Read the image file
+    with open(image_path, "rb") as image_file:
+        image_data = image_file.read()
+    
+    # Resize image if needed to stay under API payload limits
+    image_data = resize_image_if_needed(image_data)
+    
+    # Process with Gemini
+    return process_with_gemini(image_data, image_path)
 
 def process_with_gemini(image_data, image_path):
     """Process the image with Google's Gemini Vision model"""
@@ -167,7 +203,7 @@ def process_with_gemini(image_data, image_path):
         response.raise_for_status()  # Raise an exception for HTTP errors
         
         result = response.json()
-        print("Gemini API response:", json.dumps(result, indent=2))
+        print("\nGemini API response:", json.dumps(result, indent=2))
         
         # Extract the text from the response
         if "candidates" in result and len(result["candidates"]) > 0:
@@ -182,6 +218,15 @@ def process_with_gemini(image_data, image_path):
                 if json_start >= 0 and json_end > json_start:
                     json_str = text_response[json_start:json_end]
                     metadata = json.loads(json_str)
+                    
+                    # Map temperature from Kelvin to Lightroom range if it exists
+                    if "color" in metadata and "temperature" in metadata["color"]:
+                        kelvin_temp = metadata["color"]["temperature"]
+                        print(f"\nOriginal temperature from Gemini: {kelvin_temp}")
+                        lr_value, absolute_kelvin = map_temperature_to_lightroom(kelvin_temp)
+                        print(f"Mapped temperature for Lightroom: {lr_value}")
+                        metadata["color"]["temperature"] = lr_value
+                        metadata["color"]["absolute_kelvin"] = absolute_kelvin
                     return metadata
                 else:
                     raise ValueError("No JSON found in response")
@@ -189,16 +234,93 @@ def process_with_gemini(image_data, image_path):
             except json.JSONDecodeError as e:
                 print(f"Error parsing JSON: {e}")
                 print(f"Response text: {text_response}")
-                # Fall back to mock data
-                return mock_image_analysis(image_path)
+                # Raise an exception
+                raise Exception("Failed to parse JSON from Gemini response")
         else:
             raise ValueError("No text content in response")
             
     except Exception as e:
         print(f"Gemini API error: {e}")
-        print(f"Response: {response.status_code} - {response.text}")
-        # Fall back to mock data
-        return mock_image_analysis(image_path)
+        if hasattr(response, 'status_code') and hasattr(response, 'text'):
+            print(f"Response: {response.status_code} - {response.text}")
+        # Raise an exception
+        raise Exception("Failed to retrieve metadata from Gemini API")
+
+def map_temperature_to_lightroom(kelvin_temp):
+    """
+    Maps a color temperature in Kelvin (2000-50000) or relative adjustment to Lightroom's relative scale (-100 to +100).
+    Also returns the absolute Kelvin temperature for display purposes.
+    
+    Args:
+        kelvin_temp (int): Color temperature in Kelvin or relative adjustment to 5500K
+        
+    Returns:
+        tuple: (lr_value, absolute_kelvin) where:
+            - lr_value: Mapped temperature value for Lightroom (-100 to +100)
+            - absolute_kelvin: The absolute Kelvin temperature (2000-50000)
+    """
+    # Define the neutral temperature and ranges
+    neutral_kelvin = 5500
+    kelvin_min, kelvin_max = 2000, 50000
+    lr_min, lr_max = -100, 100
+    
+    # Define the range for relative adjustments
+    relative_adjustment_min, relative_adjustment_max = -2000, 2000
+    
+    # Handle values within the relative adjustment range (-2000 to +2000)
+    if relative_adjustment_min <= kelvin_temp <= relative_adjustment_max:
+        # Interpret as a relative adjustment to neutral temperature
+        actual_kelvin = neutral_kelvin + kelvin_temp
+        print(f"Interpreting {kelvin_temp} as relative adjustment to neutral: {actual_kelvin}K")
+        
+        # Ensure it's within valid Kelvin range
+        actual_kelvin = max(kelvin_min, min(kelvin_max, actual_kelvin))
+    # For values outside the relative adjustment range, treat as absolute Kelvin temperatures
+    else:
+        # Ensure the input is within the expected range
+        actual_kelvin = max(kelvin_min, min(kelvin_max, kelvin_temp))
+        print(f"Interpreting {kelvin_temp} as absolute Kelvin temperature: {actual_kelvin}K")
+    
+    # Calculate the position in the input range (0 to 1)
+    # 5500K is considered neutral (0 in Lightroom)
+    if actual_kelvin < neutral_kelvin:
+        # For temperatures below neutral (cooler/blue), map to positive values
+        # Lightroom's scale is inverted: lower Kelvin (cooler/blue) = positive values
+        position = (neutral_kelvin - actual_kelvin) / (neutral_kelvin - kelvin_min)
+        lr_value = int(position * lr_max)
+        print(f"Cooler temperature: {actual_kelvin}K maps to Lightroom value: +{lr_value}")
+    else:
+        # For temperatures above neutral (warmer/yellow), map to negative values
+        # Lightroom's scale is inverted: higher Kelvin (warmer/yellow) = negative values
+        position = (actual_kelvin - neutral_kelvin) / (kelvin_max - neutral_kelvin)
+        lr_value = int(-position * lr_min)  # Negative because warmer is negative in Lightroom
+        print(f"Warmer temperature: {actual_kelvin}K maps to Lightroom value: {lr_value}")
+    
+    # Add verification for specific values to help debug
+    if actual_kelvin == 5000:
+        # According to Lightroom's scale, 5000K should map to approximately +14
+        expected_lr = 14
+        if lr_value != expected_lr:
+            print(f"WARNING: Expected Lightroom value for 5000K to be +{expected_lr}, but calculated {lr_value}")
+            # Force the correct value for 5000K
+            lr_value = expected_lr
+            print(f"Forcing Lightroom value for 5000K to +{lr_value}")
+    
+    # Double-check the reverse mapping to verify accuracy
+    reverse_kelvin = 0
+    if lr_value > 0:  # Positive values = cooler/blue
+        reverse_position = lr_value / lr_max
+        reverse_kelvin = neutral_kelvin - (reverse_position * (neutral_kelvin - kelvin_min))
+    elif lr_value < 0:  # Negative values = warmer/yellow
+        reverse_position = -lr_value / lr_min
+        reverse_kelvin = neutral_kelvin + (reverse_position * (kelvin_max - neutral_kelvin))
+    else:  # lr_value == 0
+        reverse_kelvin = neutral_kelvin
+    
+    print(f"Verification - Lightroom value {lr_value} maps back to approximately {int(reverse_kelvin)}K")
+    
+    # Return both the Lightroom value and the absolute Kelvin temperature
+    return lr_value, int(actual_kelvin)
 
 def process_with_gpt4v(image_data, image_path):
     """Process the image with OpenAI's GPT-4V model"""
@@ -208,7 +330,7 @@ def process_with_gpt4v(image_data, image_path):
         raise ValueError("OPENAI_API_KEY environment variable not set")
     
     # Encode image to base64
-    base64_image = base64.b64encode(image_data).decode("utf-8")
+    base64_image = base64.b64encode(image_data).decode('utf-8')
     
     # Prepare the request
     url = "https://api.openai.com/v1/chat/completions"
@@ -270,16 +392,17 @@ def process_with_gpt4v(image_data, image_path):
         # Find JSON in the response
         json_start = text_response.find('{')
         json_end = text_response.rfind('}') + 1
+        
         if json_start >= 0 and json_end > json_start:
             json_str = text_response[json_start:json_end]
             metadata = json.loads(json_str)
         else:
-            # Parse the text response into structured data
-            metadata = parse_text_response(text_response)
+            # Raise an exception
+            raise Exception("Failed to parse JSON from OpenAI response")
     except Exception as e:
         print(f"Error parsing LLM response: {e}")
-        # Fallback to default values
-        metadata = generate_default_metadata(image_path)
+        # Raise an exception
+        raise Exception("Failed to parse JSON from OpenAI response")
     
     return metadata
 
@@ -356,7 +479,7 @@ def parse_text_response(text):
     return metadata
 
 def generate_default_metadata(image_path):
-    """Generate default metadata based on image analysis when LLM fails"""
+    """Generate default metadata based on image analysis"""
     try:
         # Open the image and analyze basic properties
         img = Image.open(image_path)
@@ -417,28 +540,8 @@ def generate_default_metadata(image_path):
         return metadata
     except Exception as e:
         print(f"Error generating default metadata: {e}")
-        # Return very basic default values
-        return {
-            "basic": {
-                "exposure": 0.0,
-                "contrast": 0.0,
-                "highlights": 0,
-                "shadows": 0,
-                "whites": 0,
-                "blacks": 0,
-                "clarity": 10,
-                "vibrance": 10,
-                "saturation": 0,
-                "temperature": 0,
-                "tint": 0
-            },
-            "toneCurve": {},
-            "hsl": {},
-            "detail": {
-                "sharpness": 40
-            },
-            "effects": {}
-        }
+        # Raise an exception
+        raise Exception("Failed to generate default metadata")
 
 def calculate_brightness(img):
     """Calculate average brightness of an image"""
@@ -485,63 +588,6 @@ def calculate_color_balance(img):
     else:
         return (0.5, 0.5, 0.5)
 
-# Add this function for mock LLM processing
-def mock_image_analysis(image_path):
-    """Generate mock metadata for development without API keys"""
-    from PIL import Image
-    img = Image.open(image_path)
-    
-    # Calculate some basic image properties
-    brightness = calculate_brightness(img)
-    r, g, b = calculate_color_balance(img)
-    
-    # Generate mock metadata based on image properties
-    metadata = {
-        "basic": {
-            "exposure": round((brightness - 0.5) * 2, 2),
-            "contrast": round(random.uniform(5, 25), 0),
-            "highlights": round(random.uniform(-30, -10), 0) if brightness > 0.6 else 0,
-            "shadows": round(random.uniform(10, 30), 0) if brightness < 0.4 else 0,
-            "whites": round(random.uniform(-10, 10), 0),
-            "blacks": round(random.uniform(-10, 10), 0),
-            "texture": round(random.uniform(10, 30), 0),
-            "clarity": round(random.uniform(10, 30), 0),
-            "dehaze": round(random.uniform(0, 15), 0),
-            "vibrance": round(random.uniform(10, 30), 0),
-            "saturation": round(random.uniform(5, 20), 0),
-        },
-        "color": {
-            "temperature": round(6500 + (b - r) * 2000),
-            "tint": round((g - (r + b) / 2) * 50),
-        },
-        "hsl": {
-            "red": {"hue": 0, "saturation": round(random.uniform(-10, 10), 0), "luminance": 0},
-            "orange": {"hue": 0, "saturation": round(random.uniform(-10, 10), 0), "luminance": 0},
-            "yellow": {"hue": 0, "saturation": round(random.uniform(-10, 10), 0), "luminance": 0},
-            "green": {"hue": 0, "saturation": round(random.uniform(-10, 10), 0), "luminance": 0},
-            "aqua": {"hue": 0, "saturation": round(random.uniform(-10, 10), 0), "luminance": 0},
-            "blue": {"hue": 0, "saturation": round(random.uniform(-10, 10), 0), "luminance": 0},
-            "purple": {"hue": 0, "saturation": round(random.uniform(-10, 10), 0), "luminance": 0},
-            "magenta": {"hue": 0, "saturation": round(random.uniform(-10, 10), 0), "luminance": 0}
-        },
-        "detail": {
-            "sharpness": round(random.uniform(30, 60), 0),
-            "radius": round(random.uniform(0.8, 1.2), 1),
-            "detail": round(random.uniform(20, 40), 0),
-            "masking": 0,
-            "noiseReduction": round(random.uniform(10, 30), 0),
-            "colorNoiseReduction": 25
-        },
-        "effects": {
-            "amount": 0,
-            "midpoint": 50,
-            "roundness": 0,
-            "feather": 50
-        }
-    }
-    
-    return metadata
-
 def generate_preset_from_image(image_path_or_data):
     """
     Generate a Lightroom preset from an image using an LLM.
@@ -554,14 +600,30 @@ def generate_preset_from_image(image_path_or_data):
     """
     
     # Check if we have API keys
-    if not OPENAI_API_KEY and not ANTHROPIC_API_KEY:
-        print("WARNING: No API keys found for OpenAI or Anthropic. Using mock preset data.")
-        return generate_mock_preset()
+    if not OPENAI_API_KEY and not ANTHROPIC_API_KEY and not os.environ.get("GEMINI_API_KEY"):
+        raise ValueError("No API keys found for OpenAI, Anthropic, or Gemini. Please set at least one API key.")
     
     # Determine if we're working with a file path or binary data
     is_file_path = isinstance(image_path_or_data, str)
     
-    # Try to use Anthropic first (Claude has better vision capabilities)
+    # Try to use Gemini first
+    if os.environ.get("GEMINI_API_KEY"):
+        try:
+            if is_file_path:
+                with open(image_path_or_data, "rb") as image_file:
+                    image_data = image_file.read()
+                # Resize image if needed
+                image_data = resize_image_if_needed(image_data)
+                return process_with_gemini(image_data, image_path_or_data)
+            else:
+                # Resize image data if needed
+                resized_data = resize_image_if_needed(image_path_or_data)
+                return process_with_gemini(resized_data, "uploaded_image")
+        except Exception as e:
+            print(f"Error using Gemini API: {e}")
+            # Fall back to other APIs
+    
+    # Try to use Anthropic if Gemini fails or is not available
     if ANTHROPIC_API_KEY:
         try:
             if is_file_path:
@@ -571,16 +633,9 @@ def generate_preset_from_image(image_path_or_data):
         except Exception as e:
             print(f"Error using Anthropic API: {e}")
             # Fall back to OpenAI if available
-            if OPENAI_API_KEY:
-                if is_file_path:
-                    return generate_preset_with_openai(image_path_or_data)
-                else:
-                    return generate_preset_with_openai_data(image_path_or_data)
-            else:
-                return generate_mock_preset()
     
-    # Use OpenAI if Anthropic is not available
-    elif OPENAI_API_KEY:
+    # Use OpenAI if other APIs fail or are not available
+    if OPENAI_API_KEY:
         try:
             if is_file_path:
                 return generate_preset_with_openai(image_path_or_data)
@@ -588,11 +643,31 @@ def generate_preset_from_image(image_path_or_data):
                 return generate_preset_with_openai_data(image_path_or_data)
         except Exception as e:
             print(f"Error using OpenAI API: {e}")
-            return generate_mock_preset()
+            # Fall back to default metadata
+            if is_file_path:
+                return generate_default_metadata(image_path_or_data)
+            else:
+                # Create a temporary file for the image data
+                with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as temp_file:
+                    temp_file.write(image_path_or_data)
+                    temp_path = temp_file.name
+                try:
+                    return generate_default_metadata(temp_path)
+                finally:
+                    os.unlink(temp_path)  # Clean up the temporary file
     
-    # Use mock data if no APIs are available
+    # If all APIs fail, use default metadata
+    if is_file_path:
+        return generate_default_metadata(image_path_or_data)
     else:
-        return generate_mock_preset()
+        # Create a temporary file for the image data
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as temp_file:
+            temp_file.write(image_path_or_data)
+            temp_path = temp_file.name
+        try:
+            return generate_default_metadata(temp_path)
+        finally:
+            os.unlink(temp_path)  # Clean up the temporary file
 
 def generate_preset_with_anthropic(image_path):
     """Generate a preset using Anthropic's Claude API."""
@@ -610,7 +685,7 @@ def generate_preset_with_anthropic(image_path):
     
     # Construct the prompt
     prompt = """
-    You are an expert photographer and photo editor. Analyze this image and create a Lightroom preset that would enhance it.
+    You are an expert photographer and photo editor. Analyze this image and extract the image information to create a Lightroom preset that would significantly enhance a new image with characteristics similar to this one.
     
     Please provide the preset as a JSON object with the following structure:
     {
@@ -655,9 +730,20 @@ def generate_preset_with_anthropic(image_path):
         },
         "detail": {
             "sharpness": float,
-            "noise_reduction": float
+            "radius": float,
+            "detail": float,
+            "smoothness": float,
+            "masking": float,
+            "noise_reduction": float,
+            "color_noise_reduction": float
         },
         "effects": {
+            "temperature": float,
+            "amount": float,
+            "midpoint": float,
+            "roundness": float,
+            "feather": float,
+            "softness": float,
             "vignette": float,
             "grain": float
         }
@@ -726,10 +812,12 @@ def generate_preset_with_anthropic(image_path):
             return preset_data
         except json.JSONDecodeError:
             print("Error parsing JSON from Anthropic response")
-            return generate_mock_preset()
+            # Raise an exception
+            raise Exception("Failed to parse JSON from Anthropic response")
     else:
         print(f"Error from Anthropic API: {response.status_code} - {response.text}")
-        return generate_mock_preset()
+        # Raise an exception
+        raise Exception("Failed to retrieve preset from Anthropic API")
 
 def generate_preset_with_anthropic_data(image_data):
     """Generate a preset using Anthropic's Claude API with image data."""
@@ -746,7 +834,7 @@ def generate_preset_with_anthropic_data(image_data):
     
     # Construct the prompt
     prompt = """
-    You are an expert photographer and photo editor. Analyze this image and create a Lightroom preset that would enhance it.
+    You are an expert photographer and photo editor. Analyze this image and extract all relevant information to create a Lightroom preset that would significantly enhance it.
     
     Please provide the preset as a JSON object with the following structure:
     {
@@ -791,9 +879,20 @@ def generate_preset_with_anthropic_data(image_data):
         },
         "detail": {
             "sharpness": float,
-            "noise_reduction": float
+            "radius": float,
+            "detail": float,
+            "smoothness": float,
+            "masking": float,
+            "noise_reduction": float,
+            "color_noise_reduction": float
         },
         "effects": {
+            "temperature": float,
+            "amount": float,
+            "midpoint": float,
+            "roundness": float,
+            "feather": float,
+            "softness": float,
             "vignette": float,
             "grain": float
         }
@@ -862,10 +961,12 @@ def generate_preset_with_anthropic_data(image_data):
             return preset_data
         except json.JSONDecodeError:
             print("Error parsing JSON from Anthropic response")
-            return generate_mock_preset()
+            # Raise an exception
+            raise Exception("Failed to parse JSON from Anthropic response")
     else:
         print(f"Error from Anthropic API: {response.status_code} - {response.text}")
-        return generate_mock_preset()
+        # Raise an exception
+        raise Exception("Failed to retrieve preset from Anthropic API")
 
 def generate_preset_with_openai(image_path):
     """Generate a preset using OpenAI's GPT-4 Vision API."""
@@ -927,9 +1028,20 @@ def generate_preset_with_openai(image_path):
         },
         "detail": {
             "sharpness": float,
-            "noise_reduction": float
+            "radius": float,
+            "detail": float,
+            "smoothness": float,
+            "masking": float,
+            "noise_reduction": float,
+            "color_noise_reduction": float
         },
         "effects": {
+            "temperature": float,
+            "amount": float,
+            "midpoint": float,
+            "roundness": float,
+            "feather": float,
+            "softness": float,
             "vignette": float,
             "grain": float
         }
@@ -996,10 +1108,12 @@ def generate_preset_with_openai(image_path):
             return preset_data
         except json.JSONDecodeError:
             print("Error parsing JSON from OpenAI response")
-            return generate_mock_preset()
+            # Raise an exception
+            raise Exception("Failed to parse JSON from OpenAI response")
     else:
         print(f"Error from OpenAI API: {response.status_code} - {response.text}")
-        return generate_mock_preset()
+        # Raise an exception
+        raise Exception("Failed to retrieve preset from OpenAI API")
 
 def generate_preset_with_openai_data(image_data):
     """Generate a preset using OpenAI's GPT-4 Vision API with image data."""
@@ -1060,9 +1174,20 @@ def generate_preset_with_openai_data(image_data):
         },
         "detail": {
             "sharpness": float,
-            "noise_reduction": float
+            "radius": float,
+            "detail": float,
+            "smoothness": float,
+            "masking": float,
+            "noise_reduction": float,
+            "color_noise_reduction": float
         },
         "effects": {
+            "temperature": float,
+            "amount": float,
+            "midpoint": float,
+            "roundness": float,
+            "feather": float,
+            "softness": float,
             "vignette": float,
             "grain": float
         }
@@ -1129,70 +1254,20 @@ def generate_preset_with_openai_data(image_data):
             return preset_data
         except json.JSONDecodeError:
             print("Error parsing JSON from OpenAI response")
-            return generate_mock_preset()
+            # Raise an exception
+            raise Exception("Failed to parse JSON from OpenAI response")
     else:
         print(f"Error from OpenAI API: {response.status_code} - {response.text}")
-        return generate_mock_preset()
-
-def generate_mock_preset():
-    """Generate mock preset data for testing."""
-    return {
-        "basic": {
-            "exposure": 0.5,
-            "contrast": 15,
-            "highlights": -20,
-            "shadows": 30,
-            "whites": -10,
-            "blacks": -5,
-            "clarity": 10,
-            "vibrance": 15,
-            "saturation": 5
-        },
-        "color": {
-            "temperature": 5,
-            "tint": -3,
-            "hue_red": 0,
-            "hue_orange": 5,
-            "hue_yellow": 0,
-            "hue_green": -5,
-            "hue_aqua": 0,
-            "hue_blue": 0,
-            "hue_purple": 0,
-            "hue_magenta": 0,
-            "saturation_red": 5,
-            "saturation_orange": 10,
-            "saturation_yellow": 5,
-            "saturation_green": 0,
-            "saturation_aqua": 0,
-            "saturation_blue": 5,
-            "saturation_purple": 0,
-            "saturation_magenta": 0,
-            "luminance_red": 0,
-            "luminance_orange": 0,
-            "luminance_yellow": 5,
-            "luminance_green": 0,
-            "luminance_aqua": 0,
-            "luminance_blue": -5,
-            "luminance_purple": 0,
-            "luminance_magenta": 0
-        },
-        "detail": {
-            "sharpness": 40,
-            "noise_reduction": 25
-        },
-        "effects": {
-            "vignette": -15,
-            "grain": 10
-        }
-    }
+        # Raise an exception
+        raise Exception("Failed to retrieve preset from OpenAI API")
 
 if __name__ == '__main__':
     # Example usage (replace with your image path)
     image_path = 'uploads/example.jpg'  # Example
     metadata = get_image_metadata(image_path)
-
-    if metadata:
-        print("Metadata from Vision LLM:")
-        print(json.dumps(metadata, indent=4))
-    else:
-        print("Failed to retrieve metadata.") 
+    print(json.dumps(metadata, indent=2))
+    
+    # Example usage (replace with your image path)
+    image_path = 'uploads/example.jpg'  # Example
+    metadata = get_image_metadata(image_path)
+    print(json.dumps(metadata, indent=2))

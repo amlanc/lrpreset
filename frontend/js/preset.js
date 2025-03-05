@@ -138,6 +138,9 @@ function populateAdjustmentTab(tabId, adjustments) {
     
     // Add each adjustment
     for (const [key, value] of Object.entries(adjustments)) {
+        // Skip the absolute_kelvin entry as we'll use it for temperature display
+        if (key === 'absolute_kelvin') continue;
+        
         const row = document.createElement('tr');
         
         // Create label cell
@@ -149,7 +152,14 @@ function populateAdjustmentTab(tabId, adjustments) {
         // Create value cell
         const valueCell = document.createElement('td');
         valueCell.className = 'adjustment-value';
-        valueCell.textContent = formatValue(value);
+        
+        // Special handling for temperature - show absolute Kelvin value if available
+        if (key === 'temperature' && adjustments.absolute_kelvin) {
+            valueCell.textContent = `${adjustments.absolute_kelvin}K (${formatValue(value)})`;
+        } else {
+            valueCell.textContent = formatValue(value);
+        }
+        
         row.appendChild(valueCell);
         
         // Add row to table
