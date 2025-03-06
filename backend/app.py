@@ -556,6 +556,41 @@ def proxy_supabase_image():
         print(f"Error proxying Supabase image: {e}")
         return jsonify({'error': f'Failed to proxy image: {str(e)}'}), 500
 
+@app.route('/proxy/image', methods=['GET'])
+def proxy_image():
+    """Proxy for images to avoid CORS and Content Security Policy issues"""
+    try:
+        url = request.args.get('url')
+        if not url:
+            return jsonify({'error': 'No URL provided'}), 400
+            
+        print(f"Proxying image from: {url}")
+        
+        # Get the image
+        response = requests.get(url, stream=True)
+        if not response.ok:
+            print(f"Failed to fetch image: {response.status_code}, {response.text}")
+            return jsonify({'error': f'Failed to fetch image: {response.status_code}'}), response.status_code
+            
+        # Get content type from response or default to image/jpeg
+        content_type = response.headers.get('Content-Type', 'image/jpeg')
+        
+        # Create a Flask response with the image data
+        proxy_response = Response(
+            response.content,
+            content_type=content_type,
+            headers={
+                'Cache-Control': 'public, max-age=31536000',  # Cache for 1 year
+                'Access-Control-Allow-Origin': '*'
+            }
+        )
+        
+        return proxy_response
+        
+    except Exception as e:
+        print(f"Error proxying image: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/proxy/xmp-file', methods=['GET'])
 def proxy_xmp_file():
     """Proxy for XMP files to avoid CORS issues"""

@@ -1779,40 +1779,55 @@ footer p {
     white-space: nowrap;
 }
 
-.action-button {
-    padding: 0.5rem 1rem;
-    border-radius: 6px;
-    font-size: 0.875rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    border: none;
-    margin-left: 0.5rem;
+/* Table button base styles */
+.dashboard-table button {
     display: inline-flex;
     align-items: center;
-    gap: 0.5rem;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    margin: 0 4px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    color: white;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
+.dashboard-table button i {
+    font-size: 15px;
+    line-height: 1;
+    margin: 0;
+}
+
+/* Button variants */
 .view-button {
-    background: #4C51BF;
-    color: white;
+    background: linear-gradient(135deg, #4C51BF 0%, #6366F1 100%);
 }
 
 .view-button:hover {
-    background: #434190;
+    background: linear-gradient(135deg, #434190 0%, #5558D9 100%);
+    transform: translateY(-1px);
+}
+
+.download-button {
+    background: linear-gradient(135deg, #6b46c1 0%, #34D399 100%);
+}
+
+.download-button:hover {
+    background: linear-gradient(135deg, #553c9a 0%, #2f9d7f 100%);
+    transform: translateY(-1px);
 }
 
 .delete-button {
     background: #E53E3E;
-    color: white;
 }
 
 .delete-button:hover {
     background: #C53030;
-}
-
-.action-button i {
-    font-size: 0.875rem;
+    transform: translateY(-1px);
 }
 
 /* Empty state styling */
@@ -1841,34 +1856,179 @@ footer p {
     margin: 0 auto;
 }
 
-/* Add some spacing between table cells */
-.dashboard-table th:not(:last-child),
-.dashboard-table td:not(:last-child) {
-    padding-right: 1.5rem;
+.dashboard-container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 2rem;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
 }
 
-/* Make sure the preview column doesn't get too wide */
-.dashboard-table th:first-child,
-.dashboard-table td:first-child {
+.dashboard-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0 auto;
+}
+
+/* Table base styles */
+.dashboard-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0 auto;
+}
+
+/* Row styles */
+.dashboard-table tr {
+    height: 66px;
+}
+
+/* Header styles */
+.dashboard-table th {
+    padding: 12px 8px;
+    text-align: center;
+    vertical-align: middle;
+    border-bottom: 2px solid #e2e8f0;
+    background-color: #f7fafc;
+    color: #2d3748;
+    font-weight: 600;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+
+
+/* Cell base styles */
+.dashboard-table td {
+    padding: 8px;
+    height: 66px;
+    box-sizing: border-box;
+    vertical-align: middle;
+}
+
+/* Column widths and spacing */
+.dashboard-table th,
+.dashboard-table td {
+    padding: 8px 20px;
+}
+
+/* Preview cell styles */
+.preset-preview-cell {
     width: 100px;
+    text-align: center;
 }
 
-/* Name column should take up remaining space */
-.dashboard-table th:nth-child(2),
-.dashboard-table td:nth-child(2) {
-    width: auto;
+.preset-preview-cell img {
+    width: 80px;
+    height: 50px;
+    object-fit: cover;
+    border-radius: 4px;
+    display: block;
+    margin: 0 auto;
 }
 
-/* Date column should be fixed width */
-.dashboard-table th:nth-child(3),
-.dashboard-table td:nth-child(3) {
-    width: 120px;
+/* Name cell styles */
+.preset-name-cell {
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 250px;
 }
 
-/* Actions column should be fixed width */
-.dashboard-table th:last-child,
-.dashboard-table td:last-child {
+/* Created date cell styles */
+.preset-created-cell {
+    width: 100px;
+    text-align: center;
+}
+
+/* Actions cell styles */
+.preset-actions-cell {
     width: 150px;
+    text-align: center;
+}
+
+.dashboard-table .action-buttons {
+    display: inline-flex;
+    gap: 8px;
+    height: 34px;
+    align-items: center;
+    justify-content: center;
+}
+
+
+
+/* AI Processing Container Styles */
+.ai-processing-container {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    max-width: 600px;
+    margin: 2rem auto;
+    padding: 1rem;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+}
+
+.ai-step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 0 10px;
+    position: relative;
+    flex: 1;
+}
+
+.ai-step:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    right: -10px;
+    top: 25px;
+    width: 20px;
+    height: 2px;
+    background: rgba(255, 255, 255, 0.3);
+    transform: translateY(-50%);
+}
+
+.ai-step-icon {
+    width: 40px;
+    height: 40px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+}
+
+.ai-step-icon i {
+    font-size: 18px;
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.ai-step-text {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.8);
+    text-align: center;
+    white-space: nowrap;
+}
+
+.ai-step.active .ai-step-icon {
+    background: rgba(66, 133, 244, 0.9);
+    transform: scale(1.1);
+}
+
+.ai-step.active .ai-step-icon i {
+    color: white;
+}
+
+.ai-step.completed .ai-step-icon {
+    background: #34A853;
+}
+
+.ai-step.completed .ai-step-icon i {
+    color: white;
 }
 
 #dashboard {

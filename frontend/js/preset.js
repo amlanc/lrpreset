@@ -3,6 +3,49 @@
  * Handles preset creation, display, and management
  */
 
+// Cache for dashboard image proxy URLs
+class DashboardImageCache {
+    constructor(maxSize = 50) {
+        this.maxSize = maxSize;
+        this.cache = new Map();
+    }
+
+    get(key) {
+        if (!this.cache.has(key)) return null;
+        
+        // Get the value and refresh its position
+        const value = this.cache.get(key);
+        this.cache.delete(key);
+        this.cache.set(key, value);
+        return value;
+    }
+
+    set(key, value) {
+        if (this.cache.has(key)) {
+            this.cache.delete(key);
+        } else if (this.cache.size >= this.maxSize) {
+            // Remove oldest entry
+            const oldestKey = this.cache.keys().next().value;
+            this.cache.delete(oldestKey);
+        }
+        this.cache.set(key, value);
+    }
+
+    clear() {
+        this.cache.clear();
+    }
+}
+
+// Initialize dashboard image cache only if we're on the dashboard page
+const dashboardImageCache = window.location.pathname.endsWith('dashboard.html') ? new DashboardImageCache(50) : null;
+
+// Clean up cache when leaving dashboard page
+if (dashboardImageCache) {
+    window.addEventListener('unload', () => {
+        dashboardImageCache.clear();
+    });
+}
+
 /**
  * Shows the preset preview
  * @param {string} presetId - ID of the preset
@@ -549,94 +592,105 @@ function displayPresetsTable(presets) {
     presets.forEach(preset => {
         const row = document.createElement('tr');
         
+        // Create cells with consistent structure
+        const cells = {
+            preview: document.createElement('td'),
+            name: document.createElement('td'),
+            created: document.createElement('td'),
+            actions: document.createElement('td')
+        };
+
+        // Apply consistent cell classes
+        cells.preview.className = 'preset-preview-cell';
+        cells.name.className = 'preset-name-cell';
+        cells.created.className = 'preset-created-cell';
+        cells.actions.className = 'preset-actions-cell';
+        
         // Preview cell
-        const previewCell = document.createElement('td');
         const previewImg = document.createElement('img');
-        
-        console.log('Preset:', preset.id);
-        console.log('Preset image URL:', preset.image_url);
-        
-        // Check if image_url exists and is not empty
-        if (preset.image_url && preset.image_url.trim() !== '') {
-            // Try to load the image with the original URL
-            const originalUrl = preset.image_url;
-            
-            // Remove any query parameters if present
-            const cleanUrl = preset.image_url.split('?')[0];
-            
-            console.log('Original URL:', originalUrl);
-            console.log('Clean URL:', cleanUrl);
-            
-            // Use the original URL first
-            previewImg.src = originalUrl;
-            
-            // Add error handling to try the clean URL if the original fails
-            previewImg.onerror = function() {
-                console.log('Error loading image with original URL, trying clean URL');
-                previewImg.src = cleanUrl;
-                
-                // If clean URL also fails, use placeholder
-                previewImg.onerror = function() {
-                    console.log('Error loading image with clean URL, using placeholder');
-                    previewImg.src = '/img/placeholder.jpg';
-                };
-            };
-        } else {
-            console.warn('Missing or empty image URL for preset:', preset.id);
-            previewImg.src = '/img/placeholder.jpg'; // Use a placeholder image
-        }
-        
         previewImg.alt = preset.name || 'Preset';
         previewImg.className = 'preset-thumbnail';
-        previewCell.appendChild(previewImg);
-        row.appendChild(previewCell);
+        
+        // Handle image URL with caching
+        const imageUrl = preset.image_url?.trim() || '';
+        if (imageUrl) {
+            // Check cache first (only if we're on dashboard)
+            if (dashboardImageCache) {
+                const cachedProxyUrl = dashboardImageCache.get(imageUrl);
+                if (cachedProxyUrl) {
+                    previewImg.src = cachedProxyUrl;
+                    return;
+                }
+            }
+
+            // Create the proxy URL
+            const proxyUrl = window.utils.getApiUrl('/proxy/image') + '?url=' + encodeURIComponent(imageUrl);
+            
+            // Cache and use the proxy URL
+            if (dashboardImageCache) {
+                dashboardImageCache.set(imageUrl, proxyUrl);
+            }
+            previewImg.src = proxyUrl;
+        } else {
+            previewImg.src = '/img/placeholder.jpg';
+        }
+        
+        cells.preview.appendChild(previewImg);
         
         // Name cell
-        const nameCell = document.createElement('td');
-        nameCell.textContent = preset.name || `Preset ${preset.id}`;
-        row.appendChild(nameCell);
+        cells.name.textContent = preset.name || `Preset ${preset.id}`;
         
         // Created cell
-        const createdCell = document.createElement('td');
-        const createdDate = new Date(preset.created_at);
-        createdCell.textContent = createdDate.toLocaleDateString();
-        row.appendChild(createdCell);
+        cells.created.textContent = new Date(preset.created_at).toLocaleDateString();
         
         // Actions cell
-        const actionsCell = document.createElement('td');
-        actionsCell.className = 'preset-actions';
+        cells.actions.className = 'preset-actions-cell';
         
-        // View button
-        const viewButton = document.createElement('a');
-        viewButton.href = `preset.html?id=${preset.id}`;
-        viewButton.className = 'action-button view-button';
-        viewButton.innerHTML = '<i class="fas fa-eye"></i>';
-        viewButton.title = 'View preset details';
-        actionsCell.appendChild(viewButton);
+        // Create action buttons container
+        const actionsContainer = document.createElement('div');
+        actionsContainer.className = 'action-buttons';
         
-        // Download button
-        const downloadButton = document.createElement('button');
-        downloadButton.className = 'action-button download-button';
-        downloadButton.innerHTML = '<i class="fas fa-download"></i>';
-        downloadButton.title = 'Download preset';
-        downloadButton.onclick = function() {
-            window.preset.downloadPreset(preset.id);
-        };
-        actionsCell.appendChild(downloadButton);
-        
-        // Delete button
-        const deleteButton = document.createElement('button');
-        deleteButton.className = 'action-button delete-button';
-        deleteButton.innerHTML = '<i class="fas fa-trash"></i>';
-        deleteButton.title = 'Delete preset';
-        deleteButton.onclick = function() {
-            if (confirm('Are you sure you want to delete this preset?')) {
-                window.preset.deletePreset(preset.id);
+        // Create buttons with consistent structure
+        const buttons = [
+            {
+                icon: 'eye',
+                title: 'View preset details',
+                className: 'view-button',
+                onClick: () => window.location.href = `preset.html?id=${preset.id}`
+            },
+            {
+                icon: 'download',
+                title: 'Download preset',
+                className: 'download-button',
+                onClick: () => window.preset.downloadPreset(preset.id)
+            },
+            {
+                icon: 'trash',
+                title: 'Delete preset',
+                className: 'delete-button',
+                onClick: () => {
+                    if (confirm('Are you sure you want to delete this preset?')) {
+                        window.preset.deletePreset(preset.id);
+                    }
+                }
             }
-        };
-        actionsCell.appendChild(deleteButton);
+        ];
         
-        row.appendChild(actionsCell);
+        // Create and append buttons
+        buttons.forEach(({ icon, title, className, onClick }) => {
+            const button = document.createElement('button');
+            button.className = `dashboard-button ${className}`;
+            button.innerHTML = `<i class="fas fa-${icon}"></i>`;
+            button.title = title;
+            button.onclick = onClick;
+            actionsContainer.appendChild(button);
+        });
+        
+        // Add the container to the actions cell
+        cells.actions.appendChild(actionsContainer);
+        
+        // Append all cells to the row in order
+        Object.values(cells).forEach(cell => row.appendChild(cell));
         
         // Add row to container
         presetContainer.appendChild(row);
