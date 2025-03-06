@@ -22,26 +22,88 @@ function handleFileSelect(event) {
         const previewImage = document.getElementById('previewImage');
         const previewContainer = document.querySelector('.preview-image-container');
         const previewPlaceholder = document.querySelector('.preview-placeholder');
-        const previewDetails = document.querySelector('.preview-details');
+        const previewDetails = document.getElementById('previewDetails'); // Using ID instead of class
+        const uploadPreview = document.getElementById('uploadPreview');
         
-        if (!previewImage || !previewContainer || !previewPlaceholder) {
+        if (!previewImage || !previewContainer || !previewPlaceholder || !previewDetails) {
             console.error("[Upload] Preview elements not found");
             return;
         }
         
-        previewImage.src = e.target.result;
-        previewContainer.style.display = 'block';
-        previewPlaceholder.style.display = 'none';
+        console.log('[Upload] Found all preview elements');
         
-        if (previewDetails) {
+        // Create a temporary image to get dimensions
+        const img = new Image();
+        img.onload = function() {
+            // Show the preview container and hide placeholder
+            previewContainer.classList.add('visible');
+            previewPlaceholder.style.display = 'none';
+            
+            // Keep the border but change its color to match the background
+            if (uploadPreview) {
+                uploadPreview.style.borderColor = 'transparent';
+            }
+            
+            // Update and show details
             const fileNameDisplay = document.getElementById('fileNameDisplay');
             const fileSizeDisplay = document.getElementById('fileSizeDisplay');
             if (fileNameDisplay && fileSizeDisplay) {
+                // Update the text content
                 fileNameDisplay.textContent = file.name;
                 fileSizeDisplay.textContent = `${(file.size / 1024 / 1024).toFixed(2)} MB`;
-                previewDetails.style.display = 'block';
+                
+                // Simple approach - directly set styles for better reliability
+                previewDetails.style.display = 'flex';
+                previewDetails.style.justifyContent = 'space-between';
+                previewDetails.style.alignItems = 'center';
+                previewDetails.style.margin = '10px auto';
+                previewDetails.style.background = 'rgba(0, 0, 0, 0.7)';
+                previewDetails.style.color = 'white';
+                previewDetails.style.padding = '8px 12px';
+                previewDetails.style.borderRadius = '6px';
+                previewDetails.style.zIndex = '10';
+                
+                // Also add the class for any CSS transitions
+                previewDetails.classList.add('visible');
+                
+                console.log('[Upload] Details section shown with direct styles');
+                
+                // Position the details section to match the image width
+                const updateDetailsWidth = () => {
+                    // Get the image width
+                    const imgWidth = previewImage.offsetWidth;
+                    console.log('[Upload] Image width for details:', imgWidth);
+                    
+                    if (imgWidth > 0) {
+                        // Set the width to match the image
+                        previewDetails.style.width = imgWidth + 'px';
+                        previewDetails.style.maxWidth = '100%';
+                    }
+                };
+                
+                // Initial positioning with a small delay to ensure image is rendered
+                setTimeout(updateDetailsWidth, 100);
+                
+                // Also update on window resize to maintain correct positioning
+                window.addEventListener('resize', updateDetailsWidth);
+                
+                // Store the function reference to remove it when a new image is selected
+                previewImage.dataset.resizeHandler = true;
             }
-        }
+            
+            // Add debug logging
+            console.log('[Upload] Preview loaded');
+            console.log('[Upload] Image dimensions:', img.width, 'x', img.height);
+            console.log('[Upload] File:', {
+                name: file.name,
+                type: file.type,
+                size: `${(file.size / 1024 / 1024).toFixed(2)} MB`
+            });
+        };
+        
+        // Set image sources
+        img.src = e.target.result;
+        previewImage.src = e.target.result;
     };
     reader.readAsDataURL(file);
 }
@@ -136,15 +198,17 @@ function getSelectedFile() {
         console.error('No file selected');
         return null;
     }
+    console.log('[Upload] Returning selected file:', imageUpload.files[0].name);
     return imageUpload.files[0];
 }
 
-// Export functions to window namespace
+// Expose functions to the window object
 window.upload = {
+    getSelectedFile,
     handleFileSelect,
     updateUploadUI,
-    initializeImageUpload,
-    getSelectedFile
+    initializeImageUpload
 };
 
+// Initialize the upload module
 initializeImageUpload();

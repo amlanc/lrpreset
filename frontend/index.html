@@ -3,14 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LR Preset Creator</title>
+    <title>Picture 2 Lightroom Preset</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
-    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="styles/style.css">
+    <link rel="stylesheet" href="styles/preset-parameters.css">
     <link rel="icon" type="image/x-icon" href="static/favicon.ico">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; 
-        connect-src 'self' https://accounts.google.com https://*.googleapis.com https://*.googleusercontent.com; 
-        script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.gstatic.com https://accounts.google.com https://cdn.jsdelivr.net https://apis.google.com; 
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' localhost:*; 
+        connect-src 'self' localhost:* https://accounts.google.com https://*.googleapis.com https://*.googleusercontent.com; 
+        script-src 'self' localhost:* 'unsafe-inline' 'unsafe-eval' https://www.gstatic.com https://accounts.google.com https://cdn.jsdelivr.net https://apis.google.com; 
         style-src 'self' 'unsafe-inline' https://accounts.google.com https://fonts.googleapis.com https://cdnjs.cloudflare.com; 
         font-src 'self' data: https://fonts.gstatic.com https://*.gstatic.com https://cdnjs.cloudflare.com; 
         frame-src https://accounts.google.com; 
@@ -50,13 +51,17 @@
                             <i class="fas fa-image"></i>
                             <p>Image preview will appear here</p>
                         </div>
-                        <div class="preview-image-container" style="display: none;">
-                            <img id="previewImage" src="" alt="Preview">
+                        <div class="preview-image-container">
+                            <div class="image-wrapper">
+                                <img id="previewImage" src="" alt="Preview">
+                            </div>
                         </div>
-                        <div class="preview-details" style="display: none;">
-                            <span id="fileNameDisplay"></span>
-                            <span id="fileSizeDisplay"></span>
-                        </div>
+                    </div>
+                    
+                    <!-- Separate details section below the preview -->
+                    <div class="preview-details" id="previewDetails">
+                        <span id="fileNameDisplay"></span>
+                        <span id="fileSizeDisplay"></span>
                     </div>
                     
                     <div id="upload-status" style="display:none;">

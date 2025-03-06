@@ -22,16 +22,15 @@ function updateUI(isSignedIn, profile) {
     authSection.innerHTML = '';
     
     if (isSignedIn && profile) {
-        // Create user info container
-        const userInfo = document.createElement('div');
-        userInfo.id = 'user-info';
-        userInfo.className = 'user-info';
+        // Create user profile container
+        const userProfile = document.createElement('div');
+        userProfile.className = 'user-profile';
         
-        // Add user avatar if available
+        // Add user avatar
+        const profileImage = document.createElement('img');
+        profileImage.className = 'profile-image';
+        
         if (profile.picture) {
-            // Create avatar container
-            const avatarContainer = document.createElement('div');
-            avatarContainer.className = 'user-avatar';
             
             // Check if we have a cached version of the image
             const cachedImage = localStorage.getItem('cachedProfileImage');
@@ -41,18 +40,22 @@ function updateUI(isSignedIn, profile) {
             if (cachedImage && cachedImage.startsWith('data:image') && cachedImageUserId === profile.sub) {
                 console.log('Using cached profile image');
                 // Use cached image if available
-                const avatar = document.createElement('img');
-                avatar.src = cachedImage;
-                avatar.alt = profile.name || 'User';
-                avatarContainer.appendChild(avatar);
+                profileImage.src = cachedImage;
+                profileImage.alt = profile.name || 'User';
+                userProfile.appendChild(profileImage);
             } else {
                 console.log('Loading profile image from Google');
-                // Create avatar with initials first (as immediate fallback)
-                avatarContainer.textContent = (profile.name || 'U')[0].toUpperCase();
-                avatarContainer.style.backgroundColor = '#4285F4'; // Google blue
-                avatarContainer.style.color = 'white';
-                avatarContainer.style.fontWeight = 'bold';
-                avatarContainer.style.fontSize = '16px';
+                // Create initials as immediate fallback
+                const initialsElement = document.createElement('div');
+                initialsElement.className = 'profile-image';
+                initialsElement.id = 'profile-initials';
+                initialsElement.textContent = (profile.name || 'U')[0].toUpperCase();
+                initialsElement.style.backgroundColor = '#4285F4';
+                initialsElement.style.color = 'white';
+                initialsElement.style.display = 'flex';
+                initialsElement.style.alignItems = 'center';
+                initialsElement.style.justifyContent = 'center';
+                userProfile.appendChild(initialsElement);
                 
                 // Try to load the actual image in the background
                 const avatar = new Image();
@@ -61,7 +64,7 @@ function updateUI(isSignedIn, profile) {
                 // Add error handling for image
                 avatar.onerror = function() {
                     console.log('Failed to load profile image, using initials');
-                    // Keep the initials that we already set up
+                    // Keep the initials as fallback - no need to modify since they're already displayed
                 };
                 
                 // Add load handler to cache the image
@@ -79,99 +82,96 @@ function updateUI(isSignedIn, profile) {
                         localStorage.setItem('cachedProfileImage', dataUrl);
                         localStorage.setItem('cachedProfileImageUserId', profile.sub);
                         
-                        // Replace the initials with the actual image
-                        avatarContainer.textContent = '';
-                        const displayAvatar = document.createElement('img');
-                        displayAvatar.src = dataUrl;
-                        displayAvatar.alt = profile.name || 'User';
-                        avatarContainer.appendChild(displayAvatar);
+                        // Remove the initials element
+                        const initialsElement = document.getElementById('profile-initials');
+                        if (initialsElement) {
+                            initialsElement.remove();
+                        }
                         
-                        console.log('Profile image cached successfully');
+                        // Create and add the profile image
+                        profileImage.src = dataUrl;
+                        profileImage.alt = profile.name || 'User';
+                        userProfile.appendChild(profileImage);
+                        
+                        console.log('Profile image cached and displayed successfully');
                     } catch (e) {
                         console.error("Failed to cache profile image:", e);
+                        // Keep the initials as fallback - no need to modify
                     }
                 };
                 
                 // Use our proxy to avoid rate limiting
                 const originalImageUrl = profile.picture;
-                const proxyImageUrl = `/proxy/profile-image?url=${encodeURIComponent(originalImageUrl)}`;
+                const proxyImageUrl = `proxy/profile-image?url=${encodeURIComponent(originalImageUrl)}`;
                 console.log('Using proxy for profile image:', proxyImageUrl);
                 
                 // Set the source last to trigger loading
                 avatar.src = proxyImageUrl;
             }
             
-            // Add container to user info
-            userInfo.appendChild(avatarContainer);
         } else {
-            // Create avatar container with initials if no picture
-            const avatarContainer = document.createElement('div');
-            avatarContainer.className = 'user-avatar';
-            avatarContainer.textContent = (profile.name || 'U')[0].toUpperCase();
-            avatarContainer.style.backgroundColor = '#4285F4'; // Google blue
-            avatarContainer.style.color = 'white';
-            avatarContainer.style.fontWeight = 'bold';
-            avatarContainer.style.fontSize = '16px';
-            userInfo.appendChild(avatarContainer);
+            // Use initials if no picture available
+            profileImage.style.backgroundColor = '#4285F4';
+            profileImage.style.color = 'white';
+            profileImage.style.display = 'flex';
+            profileImage.style.alignItems = 'center';
+            profileImage.style.justifyContent = 'center';
+            profileImage.textContent = (profile.name || 'U')[0].toUpperCase();
         }
         
-        // Add user name
-        const userName = document.createElement('span');
-        userName.textContent = profile.name || profile.email || 'User';
-        userName.className = 'user-name';
-        userInfo.appendChild(userName);
+        userProfile.appendChild(profileImage);
         
-        // Add dropdown
-        const dropdown = document.createElement('div');
-        dropdown.className = 'dropdown';
-        
-        const dropdownButton = document.createElement('button');
-        dropdownButton.className = 'dropdown-button';
-        dropdownButton.innerHTML = '<i class="fas fa-chevron-down"></i>';
-        
-        const dropdownContent = document.createElement('div');
-        dropdownContent.className = 'dropdown-content';
+        // Create dropdown menu
+        const dropdownMenu = document.createElement('div');
+        dropdownMenu.className = 'dropdown-menu';
         
         // Add dropdown items
-        const profileLink = document.createElement('a');
-        profileLink.href = '#';
-        profileLink.textContent = 'Profile';
-        dropdownContent.appendChild(profileLink);
+        const dashboardItem = document.createElement('a');
+        dashboardItem.href = 'dashboard.html';
+        dashboardItem.className = 'dropdown-item';
+        dashboardItem.innerHTML = '<i class="fas fa-th-large"></i>Dashboard';
+        dropdownMenu.appendChild(dashboardItem);
         
-        const dashboardLink = document.createElement('a');
-        dashboardLink.href = 'dashboard.html';
-        dashboardLink.textContent = 'Dashboard';
-        dropdownContent.appendChild(dashboardLink);
+        const divider = document.createElement('div');
+        divider.className = 'dropdown-divider';
+        dropdownMenu.appendChild(divider);
         
-        const signOutLink = document.createElement('a');
-        signOutLink.href = '#';
-        signOutLink.textContent = 'Sign Out';
-        signOutLink.addEventListener('click', function(e) {
+        const signOutItem = document.createElement('a');
+        signOutItem.href = '#';
+        signOutItem.className = 'dropdown-item';
+        signOutItem.innerHTML = '<i class="fas fa-sign-out-alt"></i>Sign Out';
+        
+        // Add click handler to sign out item
+        signOutItem.addEventListener('click', function(e) {
             e.preventDefault();
             signOut();
         });
-        dropdownContent.appendChild(signOutLink);
+        dropdownMenu.appendChild(signOutItem);
         
-        dropdown.appendChild(dropdownButton);
-        dropdown.appendChild(dropdownContent);
-        userInfo.appendChild(dropdown);
-        
-        // Add user info to auth section
-        authSection.appendChild(userInfo);
-        
-        // Set up dropdown toggle
-        dropdownButton.addEventListener('click', function() {
-            dropdownContent.classList.toggle('show');
+        // Add click handler to user profile
+        userProfile.addEventListener('click', function(e) {
+            e.stopPropagation();
+            this.classList.toggle('active');
+            dropdownMenu.classList.toggle('show');
         });
         
         // Close dropdown when clicking outside
-        window.addEventListener('click', function(event) {
-            if (!event.target.matches('.dropdown-button') && !event.target.matches('.dropdown-button *')) {
-                if (dropdownContent.classList.contains('show')) {
-                    dropdownContent.classList.remove('show');
-                }
+        document.addEventListener('click', function(e) {
+            if (!userProfile.contains(e.target)) {
+                userProfile.classList.remove('active');
+                dropdownMenu.classList.remove('show');
             }
         });
+        
+        // Add user name
+        const userName = document.createElement('span');
+        userName.className = 'user-name';
+        userName.textContent = profile.name || profile.email || 'User';
+        userProfile.appendChild(userName);
+        
+        // Add components to auth section
+        authSection.appendChild(userProfile);
+        authSection.appendChild(dropdownMenu);
     } else {
         createSignInButton();
     }
@@ -202,28 +202,38 @@ function createSignInButton() {
         existingButton.remove();
     }
     
-    // Create a custom Google Sign-In button
+    // Create the Google Sign-In button container
     const buttonContainer = document.createElement('div');
     buttonContainer.id = 'g-signin-button';
     
-    const customButton = document.createElement('button');
-    customButton.className = 'google-signin-button';
+    // Create the button with official Google styling
+    const signInButton = document.createElement('button');
+    signInButton.className = 'gsi-material-button';
     
-    // Create Google logo
-    const googleLogo = document.createElement('img');
-    googleLogo.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTgiIGhlaWdodD0iMTgiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGcgZmlsbD0ibm9uZSIgZmlsbC1ydWxlPSJldmVub2RkIj48cGF0aCBkPSJNMTcuNiA5LjJsLS4xLTEuOEg5djMuNGg0LjhDMTMuNiAxMiAxMyAxMyAxMiAxMy42djIuMmgzYTguOCA4LjggMCAwIDAgMi42LTYuNnoiIGZpbGw9IiM0Mjg1RjQiIGZpbGwtcnVsZT0ibm9uemVybyIvPjxwYXRoIGQ9Ik05IDE4YzIuNCAwIDQuNS0uOCA2LTIuMmwtMy0yLjJhNS40IDUuNCAwIDAgMS04LTIuOUgxVjEzYTkgOSAwIDAgMCA4IDV6IiBmaWxsPSIjMzRBODUzIiBmaWxsLXJ1bGU9Im5vbnplcm8iLz48cGF0aCBkPSJNNCAxMC43YTUuNCA1LjQgMCAwIDEgMC0zLjRWNUgxYTkgOSAwIDAgMCAwIDhsMy0yLjN6IiBmaWxsPSIjRkJCQzA1IiBmaWxsLXJ1bGU9Im5vbnplcm8iLz48cGF0aCBkPSJNNCAzLjZjMS4zIDAgMi41LjQgMy40IDEuM0wxNSAyLjNBOSA5IDAgMCAwIDEgNWwzIDIuNGE1LjQgNS40IDAgMCAxIDUtMy43eiIgZmlsbD0iI0VBNDMzNSIgZmlsbC1ydWxlPSJub256ZXJvIi8+PHBhdGggZD0iTTAgMGgxOHYxOEgweiIvPjwvZz48L3N2Zz4=';
-    googleLogo.alt = 'Google logo';
-    googleLogo.className = 'google-logo';
+    // Create the button content wrapper
+    const buttonContent = document.createElement('div');
+    buttonContent.className = 'gsi-material-button-content-wrapper';
     
-    // Create text span
+    // Add Google's official logo
+    const googleLogo = document.createElement('div');
+    googleLogo.className = 'gsi-material-button-icon';
+    googleLogo.innerHTML = '<svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" xmlns:xlink="http://www.w3.org/1999/xlink" style="display: block;"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path><path fill="none" d="M0 0h48v48H0z"></path></svg>';
+    
+    // Add the button text
     const buttonText = document.createElement('span');
+    buttonText.className = 'gsi-material-button-text';
     buttonText.textContent = 'Sign in with Google';
     
-    customButton.appendChild(googleLogo);
-    customButton.appendChild(buttonText);
-    customButton.addEventListener('click', initiateGoogleSignIn);
+    // Assemble the button content
+    buttonContent.appendChild(googleLogo);
+    buttonContent.appendChild(buttonText);
     
-    buttonContainer.appendChild(customButton);
+    // Add the content to the button
+    signInButton.appendChild(buttonContent);
+    signInButton.addEventListener('click', initiateGoogleSignIn);
+    
+    // Add the button to the container and then to the auth section
+    buttonContainer.appendChild(signInButton);
     authSection.appendChild(buttonContainer);
 }
 

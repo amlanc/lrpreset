@@ -83,15 +83,15 @@ def generate_xmp(metadata):
     detail = metadata.get('detail', {})
     effects = metadata.get('effects', {})
     
-    # Use the absolute Kelvin value directly if available, otherwise convert from Lightroom value
+    # Use the absolute Kelvin value directly if available, otherwise convert from Lightroom slider value
     if 'absolute_kelvin' in color:
         kelvin_temp = color.get('absolute_kelvin')
         print(f"Using absolute Kelvin temperature for XMP: {kelvin_temp}K")
     else:
-        # Convert Lightroom temperature value back to Kelvin for XMP
-        lr_temp = color.get('temperature', 0)
+        # Convert Lightroom slider value back to Kelvin for XMP
+        lr_temp = color.get('lightroom_slider_value', 0)
         kelvin_temp = lr_to_kelvin_temperature(lr_temp)
-        print(f"Converting Lightroom temperature {lr_temp} to Kelvin: {kelvin_temp}K for XMP file")
+        print(f"Converting Lightroom slider value {lr_temp} to Kelvin: {kelvin_temp}K for XMP file")
     
     # Format XMP with metadata values
     xmp_content = xmp_template.format(
@@ -119,7 +119,7 @@ def generate_xmp(metadata):
         roundness=effects.get('roundness', 0)
     )
     
-    print("XMP generated successfully")
+    print(f"XMP generated successfully:\n {xmp_content}\n")
     return xmp_content
 
 def lr_to_kelvin_temperature(lr_value):

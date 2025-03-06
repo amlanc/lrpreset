@@ -636,6 +636,6 @@ def proxy_xmp_file():
 
 # Run the application
 if __name__ == "__main__":
-    # Run the app on port 8000
+    # Run the app on localhost:8000
     print("Starting server on http://localhost:8000")
-    app.run(debug=True, host='0.0.0.0', port=8000)
+    app.run(host='localhost', port=8000, debug=True)

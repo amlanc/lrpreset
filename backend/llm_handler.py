@@ -219,14 +219,30 @@ def process_with_gemini(image_data, image_path):
                     json_str = text_response[json_start:json_end]
                     metadata = json.loads(json_str)
                     
-                    # Map temperature from Kelvin to Lightroom range if it exists
+                    # Handle temperature from Kelvin if it exists
                     if "color" in metadata and "temperature" in metadata["color"]:
                         kelvin_temp = metadata["color"]["temperature"]
                         print(f"\nOriginal temperature from Gemini: {kelvin_temp}")
-                        lr_value, absolute_kelvin = map_temperature_to_lightroom(kelvin_temp)
-                        print(f"Mapped temperature for Lightroom: {lr_value}")
-                        metadata["color"]["temperature"] = lr_value
-                        metadata["color"]["absolute_kelvin"] = absolute_kelvin
+                        
+                        # Determine if this is a direct Kelvin value or a relative adjustment
+                        relative_adjustment_min, relative_adjustment_max = -2000, 2000
+                        is_direct_kelvin = not (relative_adjustment_min <= kelvin_temp <= relative_adjustment_max)
+                        
+                        # Process the temperature value
+                        if is_direct_kelvin:
+                            # For direct Kelvin values (outside -2000 to +2000 range), store the absolute value directly
+                            print(f"Using direct Kelvin temperature for preset: {kelvin_temp}K")
+                            # Store the direct Kelvin value in absolute_kelvin and remove the temperature field
+                            metadata["color"].pop("temperature", None)  # Remove the temperature field
+                            metadata["color"]["absolute_kelvin"] = kelvin_temp
+                        else:
+                            # For relative adjustments (-2000 to +2000), convert to Lightroom's relative scale
+                            lr_value, absolute_kelvin = map_temperature_to_lightroom(kelvin_temp, use_direct_kelvin=False)
+                            print(f"Using relative temperature adjustment: {lr_value} (maps to {absolute_kelvin}K)")
+                            # Store the Lightroom relative value in lightroom_slider_value field
+                            metadata["color"].pop("temperature", None)  # Remove the temperature field
+                            metadata["color"]["lightroom_slider_value"] = lr_value
+                            metadata["color"]["absolute_kelvin"] = absolute_kelvin
                     return metadata
                 else:
                     raise ValueError("No JSON found in response")
@@ -246,17 +262,19 @@ def process_with_gemini(image_data, image_path):
         # Raise an exception
         raise Exception("Failed to retrieve metadata from Gemini API")
 
-def map_temperature_to_lightroom(kelvin_temp):
+def map_temperature_to_lightroom(kelvin_temp, use_direct_kelvin=True):
     """
     Maps a color temperature in Kelvin (2000-50000) or relative adjustment to Lightroom's relative scale (-100 to +100).
     Also returns the absolute Kelvin temperature for display purposes.
     
     Args:
         kelvin_temp (int): Color temperature in Kelvin or relative adjustment to 5500K
+        use_direct_kelvin (bool): If True, return the actual Kelvin value for direct use in the preset
+                                 instead of mapping to Lightroom's relative scale
         
     Returns:
-        tuple: (lr_value, absolute_kelvin) where:
-            - lr_value: Mapped temperature value for Lightroom (-100 to +100)
+        tuple: (lightroom_slider_value, absolute_kelvin) where:
+            - lightroom_slider_value: Either the direct Kelvin value or mapped Lightroom slider value (-100 to +100)
             - absolute_kelvin: The absolute Kelvin temperature (2000-50000)
     """
     # Define the neutral temperature and ranges
@@ -281,6 +299,12 @@ def map_temperature_to_lightroom(kelvin_temp):
         actual_kelvin = max(kelvin_min, min(kelvin_max, kelvin_temp))
         print(f"Interpreting {kelvin_temp} as absolute Kelvin temperature: {actual_kelvin}K")
     
+    # If we're using direct Kelvin values, just return the actual Kelvin temperature
+    if use_direct_kelvin:
+        print(f"Using direct Kelvin value: {actual_kelvin}K for the preset")
+        return actual_kelvin, int(actual_kelvin)
+    
+    # Otherwise, map to Lightroom's relative scale
     # Calculate the position in the input range (0 to 1)
     # 5500K is considered neutral (0 in Lightroom)
     if actual_kelvin < neutral_kelvin:
@@ -288,23 +312,23 @@ def map_temperature_to_lightroom(kelvin_temp):
         # Lightroom's scale is inverted: lower Kelvin (cooler/blue) = positive values
         position = (neutral_kelvin - actual_kelvin) / (neutral_kelvin - kelvin_min)
         lr_value = int(position * lr_max)
-        print(f"Cooler temperature: {actual_kelvin}K maps to Lightroom value: +{lr_value}")
+        print(f"Cooler temperature: {actual_kelvin}K maps to Lightroom slider value: +{lr_value}")
     else:
         # For temperatures above neutral (warmer/yellow), map to negative values
         # Lightroom's scale is inverted: higher Kelvin (warmer/yellow) = negative values
         position = (actual_kelvin - neutral_kelvin) / (kelvin_max - neutral_kelvin)
         lr_value = int(-position * lr_min)  # Negative because warmer is negative in Lightroom
-        print(f"Warmer temperature: {actual_kelvin}K maps to Lightroom value: {lr_value}")
+        print(f"Warmer temperature: {actual_kelvin}K maps to Lightroom slider value: {lr_value}")
     
     # Add verification for specific values to help debug
     if actual_kelvin == 5000:
         # According to Lightroom's scale, 5000K should map to approximately +14
         expected_lr = 14
         if lr_value != expected_lr:
-            print(f"WARNING: Expected Lightroom value for 5000K to be +{expected_lr}, but calculated {lr_value}")
+            print(f"WARNING: Expected Lightroom slider value for 5000K to be +{expected_lr}, but calculated {lr_value}")
             # Force the correct value for 5000K
             lr_value = expected_lr
-            print(f"Forcing Lightroom value for 5000K to +{lr_value}")
+            print(f"Forcing Lightroom slider value for 5000K to +{lr_value}")
     
     # Double-check the reverse mapping to verify accuracy
     reverse_kelvin = 0
@@ -317,9 +341,9 @@ def map_temperature_to_lightroom(kelvin_temp):
     else:  # lr_value == 0
         reverse_kelvin = neutral_kelvin
     
-    print(f"Verification - Lightroom value {lr_value} maps back to approximately {int(reverse_kelvin)}K")
+    print(f"Verification - Lightroom slider value {lr_value} maps back to approximately {int(reverse_kelvin)}K")
     
-    # Return both the Lightroom value and the absolute Kelvin temperature
+    # Return both the Lightroom slider value and the absolute Kelvin temperature
     return lr_value, int(actual_kelvin)
 
 def process_with_gpt4v(image_data, image_path):

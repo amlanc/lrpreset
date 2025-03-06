@@ -1,0 +1,542 @@
+/* Preset Parameters Table Styles */
+/* These styles are specifically for the preset parameters display */
+
+/* Metadata section styling */
+#metadata-display {
+    background-color: white;
+    border-radius: 10px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+    margin: 30px auto;
+    max-width: 800px;
+    padding: 30px;
+}
+
+#metadata-display h2 {
+    color: #333;
+    font-size: 1.8rem;
+    font-weight: 600;
+    text-align: center;
+    margin-bottom: 25px;
+}
+
+.metadata-container {
+    background-color: white;
+    border-radius: 8px;
+}
+
+.metadata-content {
+    padding: 10px;
+}
+
+/* Tab styling */
+.preset-tabs-container {
+    margin-bottom: 30px;
+}
+
+.preset-tabs {
+    display: flex;
+    justify-content: center;
+    border-bottom: 1px solid #e2e8f0;
+    margin-bottom: 20px;
+}
+
+.preset-tab {
+    background: none;
+    border: none;
+    padding: 10px 20px;
+    margin: 0 5px;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    color: #718096;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    font-size: 14px;
+}
+
+.preset-tab:hover {
+    color: #4a5568;
+}
+
+.preset-tab.active {
+    color: #3182ce;
+    border-bottom-color: #3182ce;
+}
+
+.preset-tab-content {
+    display: none;
+}
+
+.preset-tab-content.active {
+    display: block;
+}
+
+/* Adjustments table styling */
+.adjustments-table-container {
+    width: 100%;
+    overflow-x: auto;
+    margin-bottom: 20px;
+}
+
+.adjustments-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    background-color: white;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+    font-size: 14px;
+}
+
+.adjustments-table td {
+    padding: 12px 15px;
+    border-bottom: 1px solid #edf2f7;
+    vertical-align: middle;
+}
+
+.adjustments-table tr:last-child td {
+    border-bottom: none;
+}
+
+.adjustments-table tr:nth-child(even) {
+    background-color: #f9fafc;
+}
+
+.adjustments-table tr:hover {
+    background-color: #f1f5f9;
+}
+
+/* First column (parameter name) */
+.adjustments-table td:first-child {
+    font-weight: 500;
+    color: #2d3748;
+    width: 40%;
+}
+
+/* Second column (parameter value) */
+.adjustments-table td:last-child {
+    text-align: right;
+    font-family: 'Courier New', monospace;
+    font-weight: 600;
+    color: #3182ce;
+    width: 60%;
+}
+
+/* Download button styling */
+.download-preset-button {
+    display: block;
+    width: 200px;
+    margin: 20px auto 0;
+    padding: 12px 0;
+    background-color: #4285f4;
+    color: white;
+    text-align: center;
+    border-radius: 30px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border: none;
+    box-shadow: 0 2px 5px rgba(66, 133, 244, 0.3);
+}
+
+.download-preset-button:hover {
+    background-color: #3367d6;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(66, 133, 244, 0.4);
+}
+
+.download-preset-button i {
+    margin-right: 8px;
+}
+
+/* Dashboard Table Enhanced Styling */
+.dashboard-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 2rem;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+}
+
+.dashboard-header {
+    margin-bottom: 2rem;
+    text-align: center;
+}
+
+.dashboard-header h1 {
+    color: #2d3748;
+    font-size: 2.2rem;
+    margin-bottom: 0.5rem;
+    font-weight: 700;
+}
+
+.dashboard-header p {
+    color: #718096;
+    font-size: 1.1rem;
+}
+
+/* Dashboard Table Styles */
+.dashboard-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    background: white;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+    margin-top: 20px;
+    table-layout: fixed;
+}
+
+.dashboard-table th,
+.dashboard-table td {
+    padding: 16px;
+    text-align: left;
+    border-bottom: 1px solid #e2e8f0;
+    vertical-align: middle;
+}
+
+.dashboard-table th {
+    background-color: #f8fafc;
+    font-weight: 600;
+    color: #4a5568;
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 16px;
+}
+
+.dashboard-table tr:last-child td {
+    border-bottom: none;
+}
+
+.dashboard-table tr:hover {
+    background-color: #f7fafc;
+}
+
+/* Column specific styles */
+.preview-col {
+    width: 120px;
+}
+
+.name-col {
+    width: 50%;
+}
+
+.created-col {
+    width: 10%;
+}
+
+.actions-col {
+    width: 15%;
+}
+
+/* Preset thumbnail styling */
+.preset-thumbnail {
+    width: 100px;
+    height: 70px;
+    object-fit: cover;
+    border-radius: 8px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    transition: transform 0.2s ease;
+    border: 2px solid #e2e8f0;
+}
+
+.preset-thumbnail:hover {
+    transform: scale(1.05);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+/* Cell styling */
+.preset-preview-cell {
+    text-align: center;
+    padding: 12px;
+}
+
+.preset-name-cell {
+    font-weight: 600;
+    color: #2d3748;
+    font-size: 15px;
+    padding-right: 30px;
+}
+
+.preset-created-cell {
+    color: #718096;
+    font-size: 14px;
+    margin-left: -30px;
+}
+
+/* Actions header and buttons styling */
+.actions-header {
+    text-align: center !important;
+    padding-right: 0 !important;
+}
+
+.preset-actions-cell {
+    text-align: center;
+    padding: 10px 5px;
+    vertical-align: middle;
+}
+
+.action-buttons {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    align-items: center;
+    min-width: 120px;
+    margin-left: -20px; /* Adjust to align with header */
+}
+
+.dashboard-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    background-color: #f7fafc;
+    color: #4a5568;
+    margin: 0 3px;
+}
+
+.dashboard-button:hover {
+    transform: translateY(-2px);
+}
+
+.dashboard-button i {
+    font-size: 14px;
+}
+
+.view-button {
+    background-color: #ebf4ff;
+    color: #3182ce;
+}
+
+.view-button:hover {
+    background-color: #3182ce;
+    color: white;
+    box-shadow: 0 2px 5px rgba(49, 130, 206, 0.3);
+}
+
+.download-button {
+    background-color: #e6fffa;
+    color: #38b2ac;
+}
+
+.download-button:hover {
+    background-color: #38b2ac;
+    color: white;
+    box-shadow: 0 2px 5px rgba(56, 178, 172, 0.3);
+}
+
+.delete-button {
+    background-color: #fff5f5;
+    color: #e53e3e;
+}
+
+.delete-button:hover {
+    background-color: #e53e3e;
+    color: white;
+    box-shadow: 0 2px 5px rgba(229, 62, 62, 0.3);
+}
+
+/* Empty state styling */
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 20px;
+    text-align: center;
+    color: #a0aec0;
+}
+
+.empty-state i {
+    font-size: 48px;
+    margin-bottom: 16px;
+    opacity: 0.6;
+}
+
+.empty-state h2 {
+    font-size: 20px;
+    margin-bottom: 8px;
+    color: #4a5568;
+}
+
+.empty-state p {
+    font-size: 16px;
+    max-width: 400px;
+    color: #718096;
+}
+
+/* Loading state */
+.loading-presets {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+    text-align: center;
+    color: #4a5568;
+}
+
+.loading-presets i {
+    font-size: 32px;
+    margin-bottom: 16px;
+    color: #4285f4;
+}
+
+.loading-presets p {
+    font-size: 16px;
+}
+
+/* Responsive styles */
+@media (max-width: 992px) {
+    .dashboard-container {
+        padding: 1.5rem;
+    }
+    
+    .dashboard-table th,
+    .dashboard-table td {
+        padding: 14px 12px;
+    }
+    
+    .preset-thumbnail {
+        width: 90px;
+        height: 65px;
+    }
+}
+
+@media (max-width: 768px) {
+    #metadata-display {
+        padding: 20px 15px;
+        margin: 20px auto;
+    }
+    
+    #metadata-display h2 {
+        font-size: 1.5rem;
+        margin-bottom: 20px;
+    }
+    
+    .preset-tab {
+        padding: 8px 15px;
+        font-size: 13px;
+    }
+    
+    .adjustments-table td {
+        padding: 10px 12px;
+        font-size: 13px;
+    }
+    
+    .adjustments-table td:first-child {
+        width: 45%;
+    }
+    
+    .adjustments-table td:last-child {
+        width: 55%;
+    }
+    
+    .dashboard-container {
+        padding: 1rem;
+    }
+    
+    .dashboard-header h1 {
+        font-size: 1.8rem;
+    }
+    
+    .dashboard-header p {
+        font-size: 1rem;
+    }
+    
+    .dashboard-table {
+        font-size: 13px;
+    }
+    
+    .dashboard-table th {
+        padding: 12px 8px;
+        font-size: 12px;
+    }
+    
+    .dashboard-table td {
+        padding: 12px 8px;
+    }
+    
+    .preset-thumbnail {
+        width: 80px;
+        height: 55px;
+    }
+    
+    .created-col {
+        display: none;
+    }
+    
+    .name-col {
+        width: 45%;
+    }
+    
+    .actions-col {
+        width: 35%;
+    }
+}
+
+@media (max-width: 480px) {
+    #metadata-display {
+        padding: 15px 10px;
+    }
+    
+    .preset-tabs {
+        flex-wrap: wrap;
+    }
+    
+    .preset-tab {
+        padding: 6px 10px;
+        font-size: 12px;
+        margin-bottom: 5px;
+    }
+    
+    .adjustments-table td {
+        padding: 8px 10px;
+        font-size: 12px;
+    }
+    
+    .dashboard-container {
+        padding: 0.8rem;
+    }
+    
+    .dashboard-header h1 {
+        font-size: 1.5rem;
+    }
+    
+    .dashboard-header p {
+        font-size: 0.9rem;
+    }
+    
+    .dashboard-button {
+        width: 32px;
+        height: 32px;
+    }
+    
+    .dashboard-button i {
+        font-size: 12px;
+    }
+    
+    .action-buttons {
+        gap: 6px;
+    }
+    
+    .preset-thumbnail {
+        width: 70px;
+        height: 50px;
+    }
+}    
+    .download-preset-button {
+        width: 100%;
+        max-width: 200px;
+        padding: 10px 0;
+        font-size: 14px;
+    }
+}

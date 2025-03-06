@@ -795,8 +795,15 @@ function handleCreatePresetClick() {
     
     console.log('Uploading image to server...');
     
+    // Get the base URL for API calls
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const baseUrl = isLocalhost ? 'http://localhost:8000' : '';
+    const apiUrl = `${baseUrl}/upload`;
+    
+    console.log('Using API URL:', apiUrl);
+    
     // Upload image
-    fetch(window.utils.getApiUrl('/upload'), {
+    fetch(apiUrl, {
         method: 'POST',
         headers: headers,
         body: formData

@@ -2,6 +2,7 @@
 .gitignore
 .gitattributes
 .github
+.env
 .DS_Store/
 lib/
 include/
