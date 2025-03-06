@@ -285,7 +285,7 @@ nav {
 }
 
 .nav-links a {
-    color: #e0e0e0;
+    color: #a0a0a0;
     text-decoration: none;
     font-weight: 500;
     font-size: 1rem;
@@ -299,14 +299,14 @@ nav {
 }
 
 .nav-links a:hover {
-    color: #ffffff;
-    background-color: rgba(255, 255, 255, 0.1);
+    color: #d0d0d0;
+    background-color: rgba(255, 255, 255, 0.05);
 }
 
 .nav-links a.active {
-    background-color: rgba(66, 133, 244, 0.15);
-    color: #4285f4;
-    font-weight: 600;
+    background-color: rgba(177, 102, 255, 0.12);
+    color: #c18fff;
+    font-weight: 500;
 }
 
 /* Upload Button */
