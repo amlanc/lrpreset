@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HSL Tab Test</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Roboto', sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+        }
+        
+        h1 {
+            color: #333;
+            margin-top: 0;
+        }
+        
+        .tabs {
+            display: flex;
+            max-width: 650px;
+            margin: 0 auto;
+            border-bottom: 1px solid #ddd;
+            position: relative;
+        }
+        
+        .tab-left-spacer {
+            width: 1.25rem;
+        }
+        
+        .tab-right-spacer {
+            width: 1.75rem;
+        }
+        
+        .preset-tab {
+            flex: 1;
+            padding: 10px 15px;
+            border: none;
+            background: none;
+            cursor: pointer;
+            font-size: 14px;
+            text-align: center;
+            color: #666;
+            position: relative;
+            transition: all 0.3s ease;
+        }
+        
+        .preset-tab:hover {
+            color: #333;
+        }
+        
+        .preset-tab.active {
+            color: #0066cc;
+            font-weight: 500;
+        }
+        
+        .preset-tab.active::after {
+            content: '';
+            position: absolute;
+            bottom: -1px;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background-color: #0066cc;
+        }
+        
+        .tab-content {
+            max-width: 650px;
+            margin: 0 auto;
+        }
+        
+        .preset-tab-content {
+            display: none;
+            padding: 20px 0;
+        }
+        
+        .preset-tab-content.active {
+            display: block;
+        }
+        
+        .adjustments-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .adjustments-table th,
+        .adjustments-table td {
+            padding: 8px 0;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .adjustments-table th {
+            font-weight: 500;
+            color: #333;
+        }
+        
+        .adjustment-group-header td {
+            font-weight: 500;
+            background-color: #f5f5f5;
+            padding: 10px 0;
+        }
+        
+        .adjustment-color-header td {
+            color: #555;
+            padding-left: 15px;
+        }
+        
+        .adjustment-sublabel {
+            padding-left: 30px !important;
+            color: #666;
+        }
+        
+        .adjustment-value {
+            text-align: right;
+            padding-right: 15px !important;
+            font-family: 'Roboto Mono', monospace;
+            color: #333;
+        }
+        
+        .test-button {
+            display: block;
+            margin: 20px auto;
+            padding: 10px 20px;
+            background-color: #0066cc;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s;
+        }
+        
+        .test-button:hover {
+            background-color: #0055aa;
+        }
+        
+        .test-results {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f0f0f0;
+            border-radius: 4px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>HSL Tab Test</h1>
+        <p>This page tests the HSL tab functionality in the preset detail page.</p>
+        
+        <button id="run-test" class="test-button">Run HSL Tab Test</button>
+        
+        <div id="test-output" class="test-results">Test results will appear here...</div>
+    </div>
+    
+    <!-- Load the preset.js file first -->
+    <script src="js/preset.js"></script>
+    
+    <!-- Load the test script -->
+    <script src="js/test-hsl-tab.js"></script>
+    
+    <script>
+        // Capture console.log output
+        (function() {
+            const originalConsoleLog = console.log;
+            const testOutput = document.getElementById('test-output');
+            
+            console.log = function() {
+                // Call original console.log
+                originalConsoleLog.apply(console, arguments);
+                
+                // Convert arguments to string and append to test output
+                const args = Array.from(arguments);
+                const message = args.map(arg => {
+                    if (typeof arg === 'object') {
+                        return JSON.stringify(arg, null, 2);
+                    }
+                    return String(arg);
+                }).join(' ');
+                
+                testOutput.textContent += message + '\n';
+                
+                // Auto-scroll to bottom
+                testOutput.scrollTop = testOutput.scrollHeight;
+            };
+        })();
+        
+        // Add event listener to run test button
+        document.getElementById('run-test').addEventListener('click', function() {
+            // Clear previous test output
+            document.getElementById('test-output').textContent = '';
+            
+            // Run the test
+            testHSLTabPopulation();
+        });
+    </script>
+</body>
+</html>

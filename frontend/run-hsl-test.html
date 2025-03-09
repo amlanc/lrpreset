@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HSL Tab Test Runner</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            line-height: 1.6;
+        }
+        h1, h2 {
+            color: #333;
+        }
+        button {
+            padding: 10px 15px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-bottom: 20px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        #results {
+            border: 1px solid #ddd;
+            padding: 15px;
+            border-radius: 4px;
+            background-color: #f9f9f9;
+            min-height: 100px;
+            max-height: 300px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            margin-bottom: 20px;
+        }
+        #hsl-table-display {
+            margin-top: 30px;
+            margin-bottom: 30px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+            table-layout: fixed;
+        }
+        th, td {
+            padding: 10px;
+            text-align: left;
+            border: 1px solid #ddd;
+        }
+        th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+        }
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        tr:hover {
+            background-color: #f1f1f1;
+        }
+        .test-case {
+            margin-bottom: 30px;
+            border: 1px solid #ddd;
+            padding: 15px;
+            border-radius: 4px;
+        }
+        .test-case h3 {
+            margin-top: 0;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>HSL Tab Test Runner</h1>
+    <button id="run-test">Run HSL Tab Test</button>
+    <div>
+        <h2>Test Results</h2>
+        <pre id="results">Click "Run HSL Tab Test" to start the test...</pre>
+    </div>
+
+    <div id="hsl-table-display">
+        <h2>HSL Table Results</h2>
+        <div id="test-cases-container"></div>
+    </div>
+
+    <!-- Include the actual application scripts -->
+    <script src="js/utils.js"></script>
+    <script src="js/preset-create.js"></script>
+    
+    <!-- Include the test script -->
+    <script src="js/test-hsl-tab.js"></script>
+    
+    <script>
+        // Function to create and display the HSL table
+        function displayHSLTable(testName, hslData) {
+            const container = document.getElementById('test-cases-container');
+            
+            // Create test case container
+            const testCase = document.createElement('div');
+            testCase.className = 'test-case';
+            container.appendChild(testCase);
+            
+            // Add test case title
+            const title = document.createElement('h3');
+            title.textContent = testName;
+            testCase.appendChild(title);
+            
+            // Add debug info
+            const debugInfo = document.createElement('pre');
+            debugInfo.style.fontSize = '12px';
+            debugInfo.style.maxHeight = '100px';
+            debugInfo.style.overflow = 'auto';
+            debugInfo.style.backgroundColor = '#f5f5f5';
+            debugInfo.style.padding = '5px';
+            debugInfo.style.marginBottom = '10px';
+            debugInfo.textContent = 'HSL Data: ' + JSON.stringify(hslData, null, 2);
+            testCase.appendChild(debugInfo);
+            
+            // Create table
+            const table = document.createElement('table');
+            testCase.appendChild(table);
+            
+            // Create table header
+            const thead = document.createElement('thead');
+            table.appendChild(thead);
+            
+            const headerRow = document.createElement('tr');
+            thead.appendChild(headerRow);
+            
+            ['Color', 'Hue', 'Saturation', 'Luminance'].forEach(header => {
+                const th = document.createElement('th');
+                th.textContent = header;
+                headerRow.appendChild(th);
+            });
+            
+            // Create table body
+            const tbody = document.createElement('tbody');
+            table.appendChild(tbody);
+            
+            // Add rows for each color
+            const colors = ['Red', 'Orange', 'Yellow', 'Green', 'Aqua', 'Blue', 'Purple', 'Magenta'];
+            colors.forEach(color => {
+                const row = document.createElement('tr');
+                tbody.appendChild(row);
+                
+                // Color cell
+                const colorCell = document.createElement('td');
+                colorCell.textContent = color;
+                row.appendChild(colorCell);
+                
+                // Get HSL values for this color
+                const colorKey = color.toLowerCase();
+                const colorData = hslData && hslData[colorKey] ? hslData[colorKey] : { hue: 0, saturation: 0, luminance: 0 };
+                
+                // Add cells for hue, saturation, luminance
+                ['hue', 'saturation', 'luminance'].forEach(prop => {
+                    const cell = document.createElement('td');
+                    cell.textContent = colorData[prop] !== undefined ? colorData[prop] : 0;
+                    row.appendChild(cell);
+                });
+            });
+        }
+        
+        document.getElementById('run-test').addEventListener('click', function() {
+            // Clear previous results
+            const resultsElement = document.getElementById('results');
+            resultsElement.textContent = 'Running tests...\n';
+            
+            // Clear previous test cases
+            document.getElementById('test-cases-container').innerHTML = '';
+            
+            // Capture console output
+            const originalConsoleLog = console.log;
+            const originalConsoleError = console.error;
+            let testOutput = '';
+            
+            console.log = function() {
+                const args = Array.from(arguments);
+                testOutput += args.join(' ') + '\n';
+                originalConsoleLog.apply(console, args);
+            };
+            
+            console.error = function() {
+                const args = Array.from(arguments);
+                testOutput += 'ERROR: ' + args.join(' ') + '\n';
+                originalConsoleError.apply(console, args);
+            };
+            
+            // Define test cases
+            const testCases = [
+                {
+                    name: 'Standard HSL Object Format',
+                    data: {
+                        hsl: {
+                            red: { hue: 10, saturation: 20, luminance: 30 },
+                            orange: { hue: 15, saturation: 25, luminance: 35 }
+                        }
+                    }
+                },
+                {
+                    name: 'HSL with String Values',
+                    data: {
+                        hsl: {
+                            red: '{"hue": 10, "saturation": 20, "luminance": 30}',
+                            orange: '{"hue": 15, "saturation": 25, "luminance": 35}'
+                        }
+                    }
+                },
+                {
+                    name: 'Gemini API Response Format',
+                    data: {
+                        candidates: [{
+                            content: {
+                                parts: [{
+                                    text: '```json\n{\n  "hsl": {\n    "red": {\n      "hue": 10,\n      "saturation": 20,\n      "luminance": 30\n    },\n    "orange": {\n      "hue": 15,\n      "saturation": 25,\n      "luminance": 35\n    }\n  }\n}\n```'
+                                }]
+                            }
+                        }]
+                    }
+                },
+                {
+                    name: 'Metadata String Format',
+                    data: {
+                        metadata: '{"hsl": {"red": {"hue": 10, "saturation": 20, "luminance": 30}, "orange": {"hue": 15, "saturation": 25, "luminance": 35}}}'
+                    }
+                }
+            ];
+            
+            // Run the tests and display tables
+            try {
+                // First run the full test for validation
+                const result = testHSLTabPopulation();
+                testOutput += '\nTest result: ' + result + '\n';
+                
+                // Display tables for each test case with expected data
+                displayHSLTable('Standard HSL Object Format', {
+                    red: { hue: 10, saturation: 20, luminance: 30 },
+                    orange: { hue: 15, saturation: 25, luminance: 35 }
+                });
+                
+                displayHSLTable('HSL with String Values', {
+                    red: { hue: 10, saturation: 20, luminance: 30 },
+                    orange: { hue: 15, saturation: 25, luminance: 35 }
+                });
+                
+                displayHSLTable('Gemini API Response Format', {
+                    red: { hue: 10, saturation: 20, luminance: 30 },
+                    orange: { hue: 15, saturation: 25, luminance: 35 }
+                });
+                
+                displayHSLTable('Metadata String Format', {
+                    red: { hue: 10, saturation: 20, luminance: 30 },
+                    orange: { hue: 15, saturation: 25, luminance: 35 }
+                });
+                
+                // Also display the actual parsed data from the test
+                if (window.currentPresetData && window.currentPresetData.hsl) {
+                    displayHSLTable('Actual Test Result', window.currentPresetData.hsl);
+                } else {
+                    testOutput += '\nNo actual HSL data captured from test!\n';
+                }
+            } catch (error) {
+                testOutput += '\nTest failed with error: ' + error.message + '\n';
+                console.error('Test error:', error);
+            }
+            
+            // Restore console functions
+            console.log = originalConsoleLog;
+            console.error = originalConsoleError;
+            
+            // Display results
+            resultsElement.textContent = testOutput;
+        });
+    </script>
+</body>
+</html>
