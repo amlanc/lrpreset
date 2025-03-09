@@ -9,8 +9,15 @@
  * @returns {string} Full API URL
  */
 function getApiUrl(endpoint) {
-    // Use relative URLs for better portability
-    return endpoint;
+    // Make sure endpoint starts with a slash
+    if (!endpoint.startsWith('/')) {
+        endpoint = '/' + endpoint;
+    }
+    
+    // Get the base URL for API calls
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const baseUrl = isLocalhost ? 'http://localhost:8000' : 'https://pic2preset.com';
+    return baseUrl + endpoint;
 }
 
 /**
@@ -241,6 +248,82 @@ function generateRandomId(length = 8) {
     return id;
 }
 
+/**
+ * Formats a parameter label
+ * @param {string} key - Parameter key
+ * @returns {string} Formatted label
+ */
+function formatLabel(key) {
+    return key
+        .split('_')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
+}
+
+/**
+ * Formats a parameter value
+ * @param {any} value - Parameter value
+ * @returns {string} Formatted value
+ */
+function formatValue(value) {
+    if (value === null || value === undefined) {
+        return '-';
+    }
+    
+    // Handle numbers with decimal precision
+    if (typeof value === 'number') {
+        // If it's a whole number or close to it
+        if (Math.abs(value - Math.round(value)) < 0.001) {
+            return Math.round(value).toString();
+        }
+        // Otherwise format with up to 2 decimal places
+        return value.toFixed(2);
+    }
+    
+    // Handle booleans
+    if (typeof value === 'boolean') {
+        return value ? 'Yes' : 'No';
+    }
+    
+    // Handle arrays
+    if (Array.isArray(value)) {
+        return value.join(', ');
+    }
+    
+    // Handle objects (shouldn't happen, but just in case)
+    if (typeof value === 'object') {
+        try {
+            return JSON.stringify(value);
+        } catch (e) {
+            return '[Object]';
+        }
+    }
+    
+    // Default: convert to string
+    return value.toString();
+}
+
+/**
+ * Converts a Lightroom temperature slider value to Kelvin
+ * @param {number} lrValue - Lightroom temperature slider value (-100 to +100)
+ * @returns {number} - Temperature in Kelvin
+ */
+function convertLightroomTemperatureToKelvin(lrValue) {
+    // Base temperature (5500K)
+    const baseTemp = 5500;
+    
+    // Convert the slider value to a multiplier
+    // -100 -> 0.5x (cooler)
+    // 0 -> 1x (neutral)
+    // +100 -> 2x (warmer)
+    const multiplier = lrValue >= 0 
+        ? 1 + (lrValue / 100) // For positive values: 1.0 to 2.0
+        : 1 + (lrValue / 200); // For negative values: 0.5 to 1.0
+    
+    // Apply the multiplier to the base temperature
+    return Math.round(baseTemp * multiplier);
+}
+
 // Export functions for use in other modules
 window.utils = {
     getApiUrl,
@@ -254,5 +337,8 @@ window.utils = {
     truncateText,
     validateEmail,
     copyToClipboard,
-    generateRandomId
+    generateRandomId,
+    formatLabel,
+    formatValue,
+    convertLightroomTemperatureToKelvin
 };

@@ -50,6 +50,14 @@
     padding-left: 16px;
 }
 
+.dashboard-table th:nth-child(4) {
+    padding-left: 8px;
+}
+
+.actions-header {
+    text-align: left;
+}
+
 /* Cell content alignment */
 .dashboard-table .preset-name-cell {
     padding-left: 16px;
@@ -70,3 +78,5 @@
 .dashboard-table tbody tr:hover {
     background-color: #f8fafc;
 }
+
+/* Removed create preset form styles as they are no longer needed */

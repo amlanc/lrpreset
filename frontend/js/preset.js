@@ -3,48 +3,7 @@
  * Handles preset creation, display, and management
  */
 
-// Cache for dashboard image proxy URLs
-class DashboardImageCache {
-    constructor(maxSize = 50) {
-        this.maxSize = maxSize;
-        this.cache = new Map();
-    }
 
-    get(key) {
-        if (!this.cache.has(key)) return null;
-        
-        // Get the value and refresh its position
-        const value = this.cache.get(key);
-        this.cache.delete(key);
-        this.cache.set(key, value);
-        return value;
-    }
-
-    set(key, value) {
-        if (this.cache.has(key)) {
-            this.cache.delete(key);
-        } else if (this.cache.size >= this.maxSize) {
-            // Remove oldest entry
-            const oldestKey = this.cache.keys().next().value;
-            this.cache.delete(oldestKey);
-        }
-        this.cache.set(key, value);
-    }
-
-    clear() {
-        this.cache.clear();
-    }
-}
-
-// Initialize dashboard image cache only if we're on the dashboard page
-const dashboardImageCache = window.location.pathname.endsWith('dashboard.html') ? new DashboardImageCache(50) : null;
-
-// Clean up cache when leaving dashboard page
-if (dashboardImageCache) {
-    window.addEventListener('unload', () => {
-        dashboardImageCache.clear();
-    });
-}
 
 /**
  * Shows the preset preview
@@ -89,6 +48,157 @@ function showPresetPreview(presetId, imageUrl, presetData) {
         }
     }
     
+    // CRITICAL: Ensure the data structure has the necessary properties for temperature and HSL
+    if (!parsedPresetData.basic) parsedPresetData.basic = {};
+    if (!parsedPresetData.color) parsedPresetData.color = {};
+    
+    // Extract temperature data from any location and ensure it's in the basic tab
+    const findTemperature = (data) => {
+        // Look for temperature in any property at any level
+        for (const [key, value] of Object.entries(data)) {
+            if (key.toLowerCase() === 'temperature' || key.toLowerCase() === 'temp') {
+                console.log('Found temperature value:', value, 'in key:', key);
+                return value;
+            } else if (typeof value === 'object' && value !== null) {
+                // Check nested objects
+                for (const [nestedKey, nestedValue] of Object.entries(value)) {
+                    if (nestedKey.toLowerCase() === 'temperature' || nestedKey.toLowerCase() === 'temp') {
+                        console.log('Found nested temperature value:', nestedValue, 'in key:', key + '.' + nestedKey);
+                        return nestedValue;
+                    }
+                }
+            }
+        }
+        console.log('No temperature value found in data');
+        return null;
+    };
+    
+    // Extract absolute kelvin value from any location
+    const findAbsoluteKelvin = (data) => {
+        // Look for absolute_kelvin in any property at any level
+        for (const [key, value] of Object.entries(data)) {
+            if (key.toLowerCase().includes('kelvin')) {
+                return value;
+            } else if (typeof value === 'object' && value !== null) {
+                // Check nested objects
+                for (const [nestedKey, nestedValue] of Object.entries(value)) {
+                    if (nestedKey.toLowerCase().includes('kelvin')) {
+                        return nestedValue;
+                    }
+                }
+            }
+        }
+        return null;
+    };
+    
+    // Extract HSL data from any location
+    const findHSL = (data) => {
+        // Look for HSL in any property at any level
+        for (const [key, value] of Object.entries(data)) {
+            if (key.toLowerCase() === 'hsl') {
+                console.log('[findHSL] Found HSL at root level:', value);
+                return value;
+            } else if (typeof value === 'object' && value !== null) {
+                // Check nested objects
+                for (const [nestedKey, nestedValue] of Object.entries(value)) {
+                    if (nestedKey.toLowerCase() === 'hsl') {
+                        console.log('[findHSL] Found HSL in nested object:', nestedValue);
+                        return nestedValue;
+                    }
+                }
+            }
+        }
+        
+        // Check for color-specific HSL data (red, orange, etc.)
+        const colorKeys = ['red', 'orange', 'yellow', 'green', 'aqua', 'blue', 'purple', 'magenta'];
+        const hslData = {};
+        let foundColorData = false;
+        
+        // Look for color objects at root level or in color object
+        for (const colorKey of colorKeys) {
+            // Check at root level
+            if (data[colorKey] && typeof data[colorKey] === 'object') {
+                hslData[colorKey] = data[colorKey];
+                foundColorData = true;
+            }
+            // Check in color object
+            else if (data.color && data.color[colorKey] && typeof data.color[colorKey] === 'object') {
+                hslData[colorKey] = data.color[colorKey];
+                foundColorData = true;
+            }
+        }
+        
+        if (foundColorData) {
+            console.log('[findHSL] Found color-specific HSL data:', hslData);
+            return hslData;
+        }
+        
+        // If no HSL data found, return null so we can use data from the LLM response
+        console.log('[findHSL] No HSL data found in preset, will use data from LLM response');
+        return null;
+    };
+    
+    // Set temperature in both basic and color tabs
+    const temperature = findTemperature(parsedPresetData);
+    if (temperature !== null) {
+        parsedPresetData.basic.temperature = temperature;
+        parsedPresetData.color.temperature = temperature; // Also add to color tab
+        console.log('Setting temperature in tabs:', temperature);
+    } else {
+        // If no temperature found, set a default value to ensure it appears in the color tab
+        parsedPresetData.color.temperature = 5500;
+        console.log('No temperature found, setting default value in color tab: 5500');
+    }
+    
+    // Set absolute_kelvin in basic tab
+    const absoluteKelvin = findAbsoluteKelvin(parsedPresetData);
+    if (absoluteKelvin !== null) {
+        parsedPresetData.basic.absolute_kelvin = absoluteKelvin;
+        console.log('Setting absolute_kelvin in basic tab:', absoluteKelvin);
+    }
+    
+    // Set HSL at the root level (not in color tab)
+    const hsl = findHSL(parsedPresetData);
+    if (hsl !== null) {
+        parsedPresetData.hsl = hsl;
+        console.log('Setting HSL at root level:', hsl);
+    }
+    
+    // If we still don't have temperature data, add a default
+    if (!parsedPresetData.basic.temperature && !parsedPresetData.basic.absolute_kelvin) {
+        parsedPresetData.basic.temperature = 0;
+        parsedPresetData.basic.absolute_kelvin = 5500;
+    }
+    
+    // We'll let the HSL data come from the LLM response
+    // Don't add default values here as they should come from the API response
+    if (!parsedPresetData.hsl) {
+        console.log('[Preset] No HSL data found in preset. Will use data from LLM response.');
+    } else {
+        console.log('[Preset] Using HSL data from preset:', parsedPresetData.hsl);
+    }
+    
+    // Debug: Log the structure of the data to understand what we're working with
+    console.log('Preset data structure:', {
+        type: typeof parsedPresetData,
+        hasBasic: parsedPresetData.hasOwnProperty('basic'),
+        hasColor: parsedPresetData.hasOwnProperty('color'),
+        hasDetail: parsedPresetData.hasOwnProperty('detail'),
+        hasEffects: parsedPresetData.hasOwnProperty('effects'),
+        keys: Object.keys(parsedPresetData)
+    });
+    
+    if (parsedPresetData.basic) {
+        console.log('Basic adjustments:', parsedPresetData.basic);
+        console.log('Has temperature:', parsedPresetData.basic.hasOwnProperty('temperature'));
+        console.log('Has absolute_kelvin:', parsedPresetData.basic.hasOwnProperty('absolute_kelvin'));
+    }
+    
+    if (parsedPresetData.color) {
+        console.log('Color adjustments:', parsedPresetData.color);
+        console.log('Has hsl:', parsedPresetData.color.hasOwnProperty('hsl'));
+    }
+    
     // Populate adjustment tabs
     populateAdjustmentTabs(parsedPresetData, presetId);
     
@@ -110,30 +220,121 @@ function showPresetPreview(presetId, imageUrl, presetData) {
  * @param {string} presetId - ID of the preset
  */
 function populateAdjustmentTabs(presetData, presetId) {
-    // Store preset ID
+    console.log('Raw preset data for tabs:', presetData);
+    
+    // Create a restructured data object to ensure consistent tab population
+    const restructuredData = {
+        basic: {},
+        color: {},
+        detail: {},
+        effects: {}
+    };
+    
+    // Store preset ID and data
     const metadataContainer = document.querySelector('.metadata-container');
     if (metadataContainer) {
         metadataContainer.dataset.presetId = presetId;
+        
+        // Ensure HSL data is properly included in restructuredData
+        if (presetData.hsl && !restructuredData.hsl) {
+            restructuredData.hsl = presetData.hsl;
+            console.log('[Preset] Added HSL data from original preset to restructured data');
+        }
+        
+        // Store both the original and restructured data for tab switching
+        metadataContainer.dataset.presetData = JSON.stringify(restructuredData);
+        metadataContainer.dataset.originalPresetData = JSON.stringify(presetData);
+        console.log('[Preset] Stored preset data in metadata container for tab switching');
+        
+        // We don't need to recreate the structure - it already exists in the HTML
+        console.log('[Preset] Using existing HTML structure for tabs and tables');
     } else {
         console.error('Metadata container not found');
     }
     
-    // Populate each tab
-    if (presetData.basic) {
-        populateAdjustmentTab('basic-adjustments', presetData.basic);
+    // Handle different data structures that might come from the backend or LLM
+    if (typeof presetData === 'object' && presetData !== null) {
+        // Case 1: Data is already structured with tabs (basic, color, detail, effects)
+        if (presetData.basic || presetData.color || presetData.detail || presetData.effects) {
+            if (presetData.basic) restructuredData.basic = presetData.basic;
+            if (presetData.color) restructuredData.color = presetData.color;
+            if (presetData.detail) restructuredData.detail = presetData.detail;
+            if (presetData.effects) restructuredData.effects = presetData.effects;
+        } 
+        // Case 2: Data is a flat structure, need to organize into tabs
+        else {
+            // Temperature and related values go to basic tab
+            if (presetData.temperature !== undefined || 
+                presetData.Temperature !== undefined || 
+                presetData.absolute_kelvin !== undefined || 
+                presetData.absoluteKelvin !== undefined) {
+                
+                restructuredData.basic.temperature = presetData.temperature || presetData.Temperature;
+                restructuredData.basic.absolute_kelvin = presetData.absolute_kelvin || presetData.absoluteKelvin;
+            }
+            
+            // Move HSL data to its own property at the root level
+            if (presetData.hsl || presetData.HSL) {
+                restructuredData.hsl = presetData.hsl || presetData.HSL;
+                console.log('[Preset] Found HSL data at root level:', restructuredData.hsl);
+            }
+            
+            // Also check for HSL data using the findHSL helper function
+            const hslData = findHSL(presetData);
+            if (hslData && !restructuredData.hsl) {
+                restructuredData.hsl = hslData;
+                console.log('[Preset] Found HSL data using helper function:', hslData);
+            } 
+            
+            // Check for HSL in the color object
+            if (presetData.color) {
+                if (presetData.color.hsl || presetData.color.HSL) {
+                    restructuredData.hsl = presetData.color.hsl || presetData.color.HSL;
+                    console.log('[Preset] Found HSL data in color object:', restructuredData.hsl);
+                    // Remove it from color to avoid duplication
+                    if (presetData.color.hsl) delete presetData.color.hsl;
+                    if (presetData.color.HSL) delete presetData.color.HSL;
+                }
+                
+                // No HSL handling in original version
+            }
+            
+            // Distribute other properties to appropriate tabs based on their nature
+            for (const [key, value] of Object.entries(presetData)) {
+                // Skip already processed properties
+                if (key.toLowerCase() === 'temperature' || 
+                    key.toLowerCase() === 'absolute_kelvin' || 
+                    key.toLowerCase() === 'absolutekelvin' || 
+                    key.toLowerCase() === 'hsl') {
+                    continue;
+                }
+                
+                // Categorize remaining properties
+                if (['exposure', 'contrast', 'highlights', 'shadows', 'whites', 'blacks'].includes(key.toLowerCase())) {
+                    restructuredData.basic[key] = value;
+                } else if (['vibrance', 'saturation', 'tint', 'colorgrading'].includes(key.toLowerCase())) {
+                    restructuredData.color[key] = value;
+                } else if (['texture', 'clarity', 'dehaze', 'sharpening', 'noise'].includes(key.toLowerCase())) {
+                    restructuredData.detail[key] = value;
+                } else if (['vignette', 'grain', 'split', 'toning'].includes(key.toLowerCase())) {
+                    restructuredData.effects[key] = value;
+                } else {
+                    // Default to basic for unknown properties
+                    restructuredData.basic[key] = value;
+                }
+            }
+        }
     }
     
-    if (presetData.color) {
-        populateAdjustmentTab('color-adjustments', presetData.color);
-    }
+    console.log('Restructured data for tabs:', restructuredData);
     
-    if (presetData.detail) {
-        populateAdjustmentTab('detail-adjustments', presetData.detail);
-    }
+    // Populate each tab with the restructured data
+    populateAdjustmentTab('basic-adjustments', restructuredData.basic);
+    populateAdjustmentTab('color-adjustments', restructuredData.color);
+    populateAdjustmentTab('detail-adjustments', restructuredData.detail);
+    populateAdjustmentTab('effects-adjustments', restructuredData.effects);
     
-    if (presetData.effects) {
-        populateAdjustmentTab('effects-adjustments', presetData.effects);
-    }
+
 }
 
 /**
@@ -142,6 +343,18 @@ function populateAdjustmentTabs(presetData, presetId) {
 function setupTabSwitching() {
     const tabs = document.querySelectorAll('.preset-tab');
     const tabContents = document.querySelectorAll('.preset-tab-content');
+    
+    console.log(`[Preset] Setting up tab switching for ${tabs.length} tabs and ${tabContents.length} tab contents`);
+    
+    // Log all tabs and their data-tab attributes for debugging
+    tabs.forEach((tab, index) => {
+        console.log(`[Preset] Tab ${index}: data-tab=${tab.getAttribute('data-tab')}`);
+    });
+    
+    // Log all tab contents and their IDs for debugging
+    tabContents.forEach((content, index) => {
+        console.log(`[Preset] Tab content ${index}: id=${content.id}`);
+    });
     
     tabs.forEach(tab => {
         tab.addEventListener('click', () => {
@@ -156,12 +369,313 @@ function setupTabSwitching() {
             
             // Show the corresponding tab content
             const tabId = tab.getAttribute('data-tab');
-            const tabContent = document.getElementById(`${tabId}-tab`);
+            console.log(`[Preset] Activating tab content with ID: ${tabId}`);
+            
+            // Find the corresponding tab content element
+            // Try different ID formats since there might be inconsistency
+            let tabContent = document.getElementById(tabId);
+            
+            // If not found, try with -tab suffix
+            if (!tabContent && !tabId.endsWith('-tab') && !tabId.endsWith('-adjustments')) {
+                tabContent = document.getElementById(`${tabId}-tab`);
+                console.log(`[Preset] Trying alternate tab ID: ${tabId}-tab`);
+            }
+            
+            // If still not found, try with -adjustments suffix
+            if (!tabContent && !tabId.endsWith('-adjustments')) {
+                tabContent = document.getElementById(`${tabId}-adjustments`);
+                console.log(`[Preset] Trying alternate tab ID: ${tabId}-adjustments`);
+            }
+            
             if (tabContent) {
                 tabContent.classList.add('active');
+                console.log(`[Preset] Successfully activated tab content: ${tabContent.id}`);
+                
+                // Check if the tab content is empty (might have been cleared)
+                const table = tabContent.querySelector('.adjustments-table');
+                if (!table || !table.querySelector('tbody') || table.querySelector('tbody').children.length === 0) {
+                    console.log(`[Preset] Tab content appears empty, repopulating: ${tabId}`);
+                    
+                    // Get the preset data from the metadata container
+                    const metadataContainer = document.querySelector('.metadata-container');
+                    if (metadataContainer && metadataContainer.dataset.presetId) {
+                        const presetId = metadataContainer.dataset.presetId;
+                        console.log(`[Preset] Retrieving data for preset ID: ${presetId}`);
+                        
+                        // We don't need to fetch the data again, as it should be in the DOM
+                        // Just repopulate the current tab
+                        const presetData = JSON.parse(metadataContainer.dataset.presetData || '{}');
+                        
+                        if (Object.keys(presetData).length > 0) {
+                            console.log(`[Preset] Found preset data, repopulating tab: ${tabId}`);
+                            
+                            // Determine which tab we're on and populate accordingly
+                            // Check for both -tab and -adjustments suffix since there might be inconsistency
+                            if (tabId === 'basic' || tabId === 'basic-tab' || tabId === 'basic-adjustments') {
+                                populateAdjustmentTab('basic-adjustments', presetData.basic || {});
+                            } else if (tabId === 'color' || tabId === 'color-tab' || tabId === 'color-adjustments') {
+                                populateAdjustmentTab('color-adjustments', presetData.color || {});
+                            } else if (tabId === 'detail' || tabId === 'detail-tab' || tabId === 'detail-adjustments') {
+                                populateAdjustmentTab('detail-adjustments', presetData.detail || {});
+                            } else if (tabId === 'effects' || tabId === 'effects-tab' || tabId === 'effects-adjustments') {
+                                populateAdjustmentTab('effects-adjustments', presetData.effects || {});
+                            } else if (tabId === 'hsl' || tabId === 'hsl-tab' || tabId === 'hsl-adjustments') {
+                                // Use the correct tab ID for HSL tab
+                                const hslTabElement = document.getElementById('hsl-tab') || document.getElementById('hsl-adjustments');
+                                if (hslTabElement) {
+                                    // Log the HSL data for debugging
+                                    console.log('[Preset] HSL data for repopulation:', presetData.hsl);
+                                    
+                                    // Always use HSL data from the LLM response
+                                    if (!presetData.hsl) {
+                                        console.log('[Preset] No HSL data found in preset, will use data from LLM response');
+                                        presetData.hsl = {};
+                                    } else {
+                                        console.log('[Preset] Using HSL data from preset for tab repopulation:', presetData.hsl);
+                                    }
+                                    
+                                    populateHSLTab(hslTabElement.id, presetData.hsl || {});
+                                } else {
+                                    console.error('[Preset] Could not find HSL tab element');
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                console.error(`[Preset] Tab content not found for tab ID: ${tabId}`);
             }
         });
     });
+}
+
+/**
+ * Converts a Lightroom temperature slider value to Kelvin
+ * @param {number} lrValue - Lightroom temperature slider value (-100 to +100)
+ * @returns {number} - Temperature in Kelvin
+ */
+function convertLightroomTemperatureToKelvin(lrValue) {
+    // Constants from backend
+    const neutralKelvin = 5500;
+    const kelvinMin = 2000;
+    const kelvinMax = 50000;
+    const lrMin = -100;
+    const lrMax = 100;
+    
+    let kelvin = 0;
+    
+    if (lrValue > 0) { // Positive values = cooler/blue
+        const position = lrValue / lrMax;
+        kelvin = neutralKelvin - (position * (neutralKelvin - kelvinMin));
+    } else if (lrValue < 0) { // Negative values = warmer/yellow
+        const position = -lrValue / lrMin;
+        kelvin = neutralKelvin + (position * (kelvinMax - neutralKelvin));
+    } else { // lrValue == 0
+        kelvin = neutralKelvin;
+    }
+    
+    return Math.round(kelvin);
+}
+
+/**
+ * Populates an HSL tab with color adjustments
+ * @param {string} tabId - ID of the tab
+ * @param {Object} hslData - HSL data with color adjustments
+ */
+function populateHSLTab(tabId, hslData) {
+    // Convert tab ID to match the structure in index.html
+    let tabContentId;
+    if (tabId === 'hsl-adjustments') {
+        tabContentId = 'hsl-tab';
+    } else if (tabId === 'hsl') {
+        tabContentId = 'hsl-tab';
+    } else {
+        tabContentId = tabId;
+    }
+    
+    const tabElement = document.getElementById(tabContentId);
+    if (!tabElement) {
+        console.error(`[Preset] HSL tab element not found: ${tabContentId}`);
+        return;
+    }
+    
+    console.log(`Populating HSL tab ${tabContentId} with data:`, hslData);
+    
+    // Add more detailed debugging for HSL data
+    console.log(`[Preset] HSL data type: ${typeof hslData}`);
+    console.log(`[Preset] HSL data keys: ${Object.keys(hslData)}`);
+    console.log(`[Preset] HSL data stringified: ${JSON.stringify(hslData)}`);
+    
+    // Always use the HSL data from the LLM response
+    if (!hslData || typeof hslData !== 'object') {
+        console.log(`[Preset] No valid HSL data to display for tab: ${tabContentId}`);
+        // Initialize as empty object - don't create default values
+        hslData = {};
+        console.log(`[Preset] Using empty HSL data object, will be populated from LLM response`);
+    } else {
+        // Even if the object is empty, use it as is - don't create default values
+        console.log(`[Preset] Using provided HSL data for display:`, hslData);
+        
+        // Debug the HSL data structure in detail
+        console.log(`[Preset] HSL data keys: ${Object.keys(hslData)}`);
+        for (const key of Object.keys(hslData)) {
+            console.log(`[Preset] HSL data for ${key}:`, hslData[key]);
+        }
+    }
+    
+    // Always create a fresh table structure
+    console.log(`[Preset] Creating new table for HSL tab: ${tabContentId}`);
+    tabElement.innerHTML = '';
+    
+    // Create a new table with proper structure
+    const table = document.createElement('table');
+    table.className = 'adjustments-table';
+    
+    // Create column group for consistent widths
+    const colgroup = document.createElement('colgroup');
+    const col1 = document.createElement('col');
+    col1.style.width = '60%'; // Parameter column
+    const col2 = document.createElement('col');
+    col2.style.width = '40%'; // Value column
+    colgroup.appendChild(col1);
+    colgroup.appendChild(col2);
+    table.appendChild(colgroup);
+    
+    // Create table header
+    // const thead = document.createElement('thead');
+    // const headerRow = document.createElement('tr');
+    
+    // const th1 = document.createElement('th');
+    // th1.style.textAlign = 'left';
+    // th1.style.paddingLeft = '1.25rem';
+    // th1.textContent = 'Parameter';
+    
+    // const th2 = document.createElement('th');
+    // th2.style.textAlign = 'right';
+    // th2.style.paddingRight = '1.75rem';
+    // th2.textContent = 'Value';
+    
+    // headerRow.appendChild(th1);
+    // headerRow.appendChild(th2);
+    // thead.appendChild(headerRow);
+    // table.appendChild(thead);
+    
+    // Create table body
+    const tbody = document.createElement('tbody');
+    table.appendChild(tbody);
+    
+    // Add table to tab content
+    tabElement.appendChild(table);
+    
+    // Log that we're populating the tbody
+    console.log(`[Preset] Populating HSL tab tbody: ${tabContentId}`);
+    
+    // Create a header row for HSL
+    const hslHeaderRow = document.createElement('tr');
+    hslHeaderRow.className = 'adjustment-group-header';
+    
+    const headerCell = document.createElement('td');
+    headerCell.colSpan = 2;
+    headerCell.textContent = 'HSL Color Adjustments';
+    
+    console.log('[Preset] Creating HSL header row');
+    // Let CSS handle the styling
+    hslHeaderRow.appendChild(headerCell);
+    tbody.appendChild(hslHeaderRow);
+    
+    // Check if HSL has the backend structure (with color keys)
+    const colorKeys = ['red', 'orange', 'yellow', 'green', 'aqua', 'blue', 'purple', 'magenta'];
+    const hasColorStructure = colorKeys.some(color => hslData[color] !== undefined);
+    
+    console.log('[Preset] HSL structure check:', {
+        hasColorStructure,
+        foundColors: colorKeys.filter(color => hslData[color] !== undefined),
+        hslDataKeys: Object.keys(hslData)
+    });
+    
+    // Force display of HSL data if it exists but isn't being detected properly
+    if (!hasColorStructure && Object.keys(hslData).length > 0) {
+        console.log('[Preset] HSL data exists but not in expected structure, forcing display');
+        // Check if we have a nested structure
+        if (hslData.hsl && typeof hslData.hsl === 'object') {
+            hslData = hslData.hsl;
+            console.log('[Preset] Found nested HSL data, using:', hslData);
+        }
+    }
+    
+    if (hasColorStructure) {
+        // Process each color that has adjustments
+        for (const [colorName, colorAdjustments] of Object.entries(hslData)) {
+            // Skip empty color adjustments
+            if (!colorAdjustments || Object.keys(colorAdjustments).length === 0) continue;
+            
+            // Create a subheader for the color
+            const colorHeaderRow = document.createElement('tr');
+            colorHeaderRow.className = 'adjustment-color-header';
+            
+            const colorHeaderCell = document.createElement('td');
+            colorHeaderCell.colSpan = 2;
+            colorHeaderCell.textContent = formatLabel(colorName) + ' Adjustments';
+            // Let CSS handle the styling
+            colorHeaderRow.appendChild(colorHeaderCell);
+            tbody.appendChild(colorHeaderRow);
+            
+            // Create rows for each HSL component for this color
+            for (const [hslKey, hslValue] of Object.entries(colorAdjustments)) {
+                const hslRow = document.createElement('tr');
+                hslRow.className = 'adjustment-subitem';
+                
+                // Create label cell
+                const hslLabelCell = document.createElement('td');
+                hslLabelCell.className = 'adjustment-sublabel';
+                hslLabelCell.textContent = formatLabel(hslKey);
+                // Let CSS handle the styling
+                hslRow.appendChild(hslLabelCell);
+                
+                // Create value cell
+                const hslValueCell = document.createElement('td');
+                hslValueCell.className = 'adjustment-value';
+                hslValueCell.textContent = formatValue(hslValue);
+                // Let CSS handle the styling
+                
+                hslRow.appendChild(hslValueCell);
+                tbody.appendChild(hslRow);
+            }
+        }
+    } else {
+        // Handle simple HSL object (with h, s, l properties)
+        for (const [hslKey, hslValue] of Object.entries(hslData)) {
+            // Skip if the value is an empty object
+            if (typeof hslValue === 'object' && Object.keys(hslValue).length === 0) continue;
+            
+            const hslRow = document.createElement('tr');
+            hslRow.className = 'adjustment-subitem';
+            
+            // Create label cell
+            const hslLabelCell = document.createElement('td');
+            hslLabelCell.className = 'adjustment-sublabel';
+            hslLabelCell.textContent = formatLabel(hslKey);
+            hslRow.appendChild(hslLabelCell);
+            
+            // Create value cell
+            const hslValueCell = document.createElement('td');
+            hslValueCell.className = 'adjustment-value';
+            
+            if (typeof hslValue === 'object' && hslValue !== null) {
+                // If it's an object with h, s, l properties
+                if (hslValue.h !== undefined && hslValue.s !== undefined && hslValue.l !== undefined) {
+                    hslValueCell.textContent = `H: ${hslValue.h}, S: ${hslValue.s}, L: ${hslValue.l}`;
+                } else {
+                    hslValueCell.textContent = JSON.stringify(hslValue);
+                }
+            } else {
+                hslValueCell.textContent = formatValue(hslValue);
+            }
+            
+            hslRow.appendChild(hslValueCell);
+            tbody.appendChild(hslRow);
+        }
+    }
 }
 
 /**
@@ -170,43 +684,185 @@ function setupTabSwitching() {
  * @param {Object} adjustments - Adjustment data
  */
 function populateAdjustmentTab(tabId, adjustments) {
-    const tabElement = document.getElementById(tabId);
-    if (!tabElement) {
-        console.error(`[Preset] Tab element not found: ${tabId}`);
+    // Get the correct tbody ID based on the tab ID
+    let tbodyId;
+    if (tabId.endsWith('-adjustments')) {
+        tbodyId = tabId;
+    } else if (tabId.endsWith('-tab')) {
+        // For index.html, the tbody has the same ID as the tab
+        tbodyId = tabId.replace('-tab', '-adjustments');
+    } else {
+        tbodyId = `${tabId}-adjustments`;
+    }
+    
+    console.log(`[Preset] Looking for tbody with ID: ${tbodyId}`);
+    const tbody = document.getElementById(tbodyId);
+    if (!tbody) {
+        // Try finding the tbody directly in the tab content
+        const tabContent = document.getElementById(tabId);
+        if (!tabContent) {
+            console.error(`[Preset] Tab content element not found: ${tabId}`);
+            return;
+        }
+        const tbodyInTab = tabContent.querySelector('tbody');
+        if (!tbodyInTab) {
+            console.error(`[Preset] Could not find tbody in tab: ${tabId}`);
+            return;
+        }
+        // Use the tbody we found
+        console.log(`[Preset] Found tbody in tab content: ${tabId}`);
+        tbodyId = tbodyInTab.id || tabId;
+    }
+    
+    // Clear the tbody to prevent duplicate rows
+    console.log(`[Preset] Clearing tbody for: ${tbodyId}`);
+    tbody.innerHTML = '';
+    
+    console.log(`[Preset] Populating adjustments for tab: ${tbodyId}`, adjustments);
+    
+    // For color tab, ensure temperature is included
+    if (tabId === 'color' && !adjustments.temperature) {
+        adjustments.temperature = 5500; // Default temperature
+        console.log(`[Preset] Adding default temperature to color tab:`, adjustments);
+    }
+    
+    // Check if we have any adjustments to display
+    if (!adjustments || Object.keys(adjustments).length === 0) {
+        console.log(`[Preset] No adjustments to display for tab: ${tbodyId}`);
+        const emptyRow = document.createElement('tr');
+        emptyRow.className = 'adjustment-row';
+        const emptyCell = document.createElement('td');
+        emptyCell.colSpan = 2;
+        emptyCell.className = 'empty-adjustments';
+        emptyCell.style.textAlign = 'center';
+        emptyCell.style.padding = '1rem';
+        emptyCell.textContent = 'No adjustments available';
+        emptyRow.appendChild(emptyCell);
+        tbody.appendChild(emptyRow);
         return;
     }
     
-    // Clear existing content
-    tabElement.innerHTML = '';
+    // We're now working directly with the existing tbody element
+    // No need to create a new table structure
     
     // Add each adjustment
     for (const [key, value] of Object.entries(adjustments)) {
         // Skip the absolute_kelvin entry as we'll use it for temperature display
-        if (key === 'absolute_kelvin') continue;
+        if (key === 'absolute_kelvin' || key === 'absoluteKelvin' || key === 'Absolute_Kelvin') continue;
+        
+        // Skip HSL data in regular tabs - it will be shown in its own tab
+        if ((key === 'hsl' || key === 'HSL') && typeof value === 'object' && value !== null) {
+            console.log('Skipping HSL data in regular tab - will be shown in HSL tab');
+            continue;
+        }
         
         const row = document.createElement('tr');
+        row.className = 'adjustment-row';
         
         // Create label cell
         const labelCell = document.createElement('td');
         labelCell.className = 'adjustment-label';
-        labelCell.textContent = formatLabel(key);
+        labelCell.style.textAlign = 'left';
+        labelCell.style.paddingLeft = '1.25rem';
+        labelCell.textContent = key === 'temperature' ? 'Temperature' : formatLabel(key);
         row.appendChild(labelCell);
         
         // Create value cell
         const valueCell = document.createElement('td');
         valueCell.className = 'adjustment-value';
+        valueCell.style.textAlign = 'right';
+        valueCell.style.paddingRight = '1.75rem';
         
-        // Special handling for temperature - show absolute Kelvin value if available
-        if (key === 'temperature' && adjustments.absolute_kelvin) {
-            valueCell.textContent = `${adjustments.absolute_kelvin}K (${formatValue(value)})`;
+        // Special handling for temperature
+        if (key.toLowerCase() === 'temperature') {
+            let kelvinValue;
+            
+            // Log all temperature-related values for debugging
+            console.log('[Preset] Temperature handling:', {
+                key,
+                value,
+                absolute_kelvin: adjustments.absolute_kelvin,
+                absoluteKelvin: adjustments.absoluteKelvin,
+                Absolute_Kelvin: adjustments.Absolute_Kelvin,
+                valueType: typeof value,
+                valueIsObject: typeof value === 'object' && value !== null
+            });
+            
+            // Case 1: We have an absolute_kelvin value directly available
+            if (adjustments.absolute_kelvin || adjustments.absoluteKelvin || adjustments.Absolute_Kelvin) {
+                kelvinValue = adjustments.absolute_kelvin || adjustments.absoluteKelvin || adjustments.Absolute_Kelvin;
+                console.log('[Preset] Using absolute_kelvin value:', kelvinValue);
+            }
+            // Case 2: Temperature is an object with a kelvin property
+            else if (typeof value === 'object' && value !== null && (value.kelvin || value.Kelvin)) {
+                kelvinValue = value.kelvin || value.Kelvin;
+                console.log('[Preset] Using kelvin property from object:', kelvinValue);
+            }
+            // Case 3: Temperature is a Lightroom slider value (-100 to +100)
+            else if (typeof value === 'number' && value >= -100 && value <= 100) {
+                kelvinValue = convertLightroomTemperatureToKelvin(value);
+                console.log('[Preset] Converted Lightroom slider value to Kelvin:', value, '->', kelvinValue);
+            }
+            // Case 4: Temperature is a direct Kelvin value
+            else if (typeof value === 'number' && value >= 2000 && value <= 50000) {
+                kelvinValue = value;
+                console.log('[Preset] Using direct Kelvin value:', kelvinValue);
+            }
+            // Case 5: String that might be a number
+            else if (typeof value === 'string' && !isNaN(parseFloat(value))) {
+                const numValue = parseFloat(value);
+                if (numValue >= -100 && numValue <= 100) {
+                    // Likely a Lightroom slider value
+                    kelvinValue = convertLightroomTemperatureToKelvin(numValue);
+                    console.log('[Preset] Converted string Lightroom slider value to Kelvin:', numValue, '->', kelvinValue);
+                } else if (numValue >= 2000 && numValue <= 50000) {
+                    // Likely a direct Kelvin value
+                    kelvinValue = numValue;
+                    console.log('[Preset] Using string Kelvin value:', kelvinValue);
+                }
+            }
+            // Case 6: Check if there's a temperature property in the parent object
+            else if (adjustments.temperature !== undefined) {
+                const tempValue = adjustments.temperature;
+                if (typeof tempValue === 'number') {
+                    if (tempValue >= -100 && tempValue <= 100) {
+                        kelvinValue = convertLightroomTemperatureToKelvin(tempValue);
+                        console.log('[Preset] Converted parent temperature to Kelvin:', tempValue, '->', kelvinValue);
+                    } else if (tempValue >= 2000 && tempValue <= 50000) {
+                        kelvinValue = tempValue;
+                        console.log('[Preset] Using parent Kelvin value:', kelvinValue);
+                    }
+                }
+            }
+            
+            // Display the temperature in Kelvin
+            if (kelvinValue) {
+                valueCell.textContent = `${Math.round(kelvinValue)}K`;
+                console.log('[Preset] Temperature displayed as:', valueCell.textContent);
+            } else {
+                // Fallback to the original value if we couldn't determine a Kelvin value
+                valueCell.textContent = formatValue(value);
+                console.log('[Preset] Temperature displayed without conversion:', valueCell.textContent);
+            }
+        }
+        // Handle other nested objects (not arrays)
+        else if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+            // Check if it's a color object with RGB or HSL properties
+            if (value.r !== undefined && value.g !== undefined && value.b !== undefined) {
+                valueCell.textContent = `RGB(${value.r}, ${value.g}, ${value.b})`;
+            } else if (value.h !== undefined && value.s !== undefined && value.l !== undefined) {
+                valueCell.textContent = `HSL(${value.h}, ${value.s}, ${value.l})`;
+            } else {
+                valueCell.textContent = JSON.stringify(value);
+            }
         } else {
             valueCell.textContent = formatValue(value);
         }
         
         row.appendChild(valueCell);
         
-        // Add row to table
-        tabElement.appendChild(row);
+        // Add row directly to the existing tbody
+        tbody.appendChild(row);
     }
 }
 
@@ -551,151 +1207,7 @@ function loadUserPresets() {
     });
 }
 
-/**
- * Displays presets in a table
- * @param {Array} presets - Array of preset objects
- */
-function displayPresetsTable(presets) {
-    const presetContainer = document.getElementById('presets-table-body');
-    if (!presetContainer) {
-        console.error("[Preset] Presets table body not found");
-        return;
-    }
-    
-    // Clear container
-    presetContainer.innerHTML = '';
-    
-    if (!presets || presets.length === 0) {
-        // Show empty state
-        const emptyState = document.getElementById('empty-state');
-        if (emptyState) {
-            emptyState.style.display = 'flex';
-        }
-        return;
-    }
-    
-    // Hide empty state if it exists
-    const emptyState = document.getElementById('empty-state');
-    if (emptyState) {
-        emptyState.style.display = 'none';
-    }
-    
-    console.log('Displaying presets:', presets);
-    
-    // Hide loading indicator if it exists
-    const loadingPresets = document.getElementById('loading-presets');
-    if (loadingPresets) {
-        loadingPresets.style.display = 'none';
-    }
-    
-    // For each preset, create a table row
-    presets.forEach(preset => {
-        const row = document.createElement('tr');
-        
-        // Create cells with consistent structure
-        const cells = {
-            preview: document.createElement('td'),
-            name: document.createElement('td'),
-            created: document.createElement('td'),
-            actions: document.createElement('td')
-        };
 
-        // Apply consistent cell classes
-        cells.preview.className = 'preset-preview-cell';
-        cells.name.className = 'preset-name-cell';
-        cells.created.className = 'preset-created-cell';
-        cells.actions.className = 'preset-actions-cell';
-        
-        // Preview cell
-        const previewImg = document.createElement('img');
-        previewImg.alt = preset.name || 'Preset';
-        previewImg.className = 'preset-thumbnail';
-        
-        // Handle image URL with caching
-        const imageUrl = preset.image_url?.trim() || '';
-        if (imageUrl) {
-            // Check cache first (only if we're on dashboard)
-            if (dashboardImageCache) {
-                const cachedProxyUrl = dashboardImageCache.get(imageUrl);
-                if (cachedProxyUrl) {
-                    previewImg.src = cachedProxyUrl;
-                    return;
-                }
-            }
-
-            // Create the proxy URL
-            const proxyUrl = window.utils.getApiUrl('/proxy/image') + '?url=' + encodeURIComponent(imageUrl);
-            
-            // Cache and use the proxy URL
-            if (dashboardImageCache) {
-                dashboardImageCache.set(imageUrl, proxyUrl);
-            }
-            previewImg.src = proxyUrl;
-        } else {
-            previewImg.src = '/img/placeholder.jpg';
-        }
-        
-        cells.preview.appendChild(previewImg);
-        
-        // Name cell
-        cells.name.textContent = preset.name || `Preset ${preset.id}`;
-        
-        // Created cell
-        cells.created.textContent = new Date(preset.created_at).toLocaleDateString();
-        
-        // Actions cell
-        cells.actions.className = 'preset-actions-cell';
-        
-        // Create action buttons container
-        const actionsContainer = document.createElement('div');
-        actionsContainer.className = 'action-buttons';
-        
-        // Create buttons with consistent structure
-        const buttons = [
-            {
-                icon: 'eye',
-                title: 'View preset details',
-                className: 'view-button',
-                onClick: () => window.location.href = `preset.html?id=${preset.id}`
-            },
-            {
-                icon: 'download',
-                title: 'Download preset',
-                className: 'download-button',
-                onClick: () => window.preset.downloadPreset(preset.id)
-            },
-            {
-                icon: 'trash',
-                title: 'Delete preset',
-                className: 'delete-button',
-                onClick: () => {
-                    if (confirm('Are you sure you want to delete this preset?')) {
-                        window.preset.deletePreset(preset.id);
-                    }
-                }
-            }
-        ];
-        
-        // Create and append buttons
-        buttons.forEach(({ icon, title, className, onClick }) => {
-            const button = document.createElement('button');
-            button.className = `dashboard-button ${className}`;
-            button.innerHTML = `<i class="fas fa-${icon}"></i>`;
-            button.title = title;
-            button.onclick = onClick;
-            actionsContainer.appendChild(button);
-        });
-        
-        // Add the container to the actions cell
-        cells.actions.appendChild(actionsContainer);
-        
-        // Append all cells to the row in order
-        Object.values(cells).forEach(cell => row.appendChild(cell));
-        
-        // Add row to container
-        presetContainer.appendChild(row);
-    });
-}
 
 /**
  * Deletes a preset
@@ -810,6 +1322,8 @@ function handleCreatePresetClick() {
     })
     .then(response => {
         console.log('Server response status:', response.status);
+        console.log('Response headers:', response.headers);
+        
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
@@ -911,6 +1425,81 @@ function initializeCreatePresetButton() {
     }
 }
 
+/**
+ * Loads preset details from the server
+ * @param {string} presetId - ID of the preset to load
+ */
+function loadPresetDetails(presetId) {
+    console.log(`Loading preset details for ID: ${presetId}`);
+    
+    // Show loading state
+    const presetName = document.getElementById('preset-name');
+    if (presetName) {
+        presetName.textContent = 'Loading preset...';
+    }
+    
+    // Get the authentication token
+    const token = window.auth.getAuthToken();
+    if (!token) {
+        console.error('No authentication token found');
+        if (presetName) {
+            presetName.textContent = 'Authentication Required';
+        }
+        return;
+    }
+    
+    // Set up headers with authentication
+    const headers = {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+    };
+    
+    // Fetch preset details from the API
+    fetch(window.utils.getApiUrl(`/preset/${presetId}`), {
+        method: 'GET',
+        headers: headers
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP error! Status: ${response.status}`);
+        }
+        return response.json();
+    })
+    .then(data => {
+        console.log('Preset details loaded:', data);
+        
+        // Update preset name and date
+        if (presetName) {
+            presetName.textContent = data.name || `Preset ${data.id}`;
+        }
+        
+        const presetDate = document.getElementById('preset-date');
+        if (presetDate && data.created_at) {
+            presetDate.textContent = `Created on ${new Date(data.created_at).toLocaleDateString()}`;
+        }
+        
+        // Update preset image
+        const presetImage = document.getElementById('preset-image');
+        if (presetImage && data.image_url) {
+            // Create the proxy URL for the image
+            const proxyUrl = window.utils.getApiUrl('/proxy/image') + '?url=' + encodeURIComponent(data.image_url);
+            presetImage.src = proxyUrl;
+            presetImage.alt = data.name || `Preset ${data.id}`;
+        }
+        
+        // Show preset data
+        showPresetPreview(data.id, data.image_url, data.preset_data);
+    })
+    .catch(error => {
+        console.error('Error loading preset details:', error);
+        
+        // Show error message
+        if (presetName) {
+            presetName.textContent = 'Error Loading Preset';
+        }
+    });
+}
+
 // Export functions to the global namespace
 window.preset = {
     showPresetPreview,
@@ -920,5 +1509,6 @@ window.preset = {
     initializeCreatePresetButton,
     loadUserPresets,
     downloadPreset,
-    deletePreset
+    deletePreset,
+    loadPresetDetails
 };

@@ -465,6 +465,8 @@ function getAuthToken() {
     const token = localStorage.getItem('authToken');
     if (!token) {
         console.log("No authentication token found");
+        // Redirect to login if no token
+        window.location.href = '/index.html';
         return '';
     }
     
@@ -477,6 +479,8 @@ function getAuthToken() {
         if (Date.now() >= expiryTime) {
             console.log('Token expired, removing');
             localStorage.removeItem('authToken');
+            // Redirect to login if token expired
+            window.location.href = '/index.html';
             return '';
         }
         
@@ -484,6 +488,8 @@ function getAuthToken() {
         return token;
     } catch (e) {
         console.error('Error parsing token:', e);
+        // Redirect to login if token is invalid
+        window.location.href = '/index.html';
         return '';
     }
 }
@@ -524,5 +530,17 @@ window.auth = {
     checkUrlForAuthResponse,
     isAuthenticated,
     getAuthToken,
+    // Backward compatibility for older code still using getToken
+    getToken: getAuthToken,
     getUserId
 };
+
+// Initialize auth module
+startGoogleAuth();
+checkUrlForAuthResponse();
+
+// Initialize auth when the script loads
+document.addEventListener('DOMContentLoaded', () => {
+    startGoogleAuth();
+    checkUrlForAuthResponse();
+});
