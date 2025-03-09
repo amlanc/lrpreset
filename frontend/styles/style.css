@@ -30,7 +30,7 @@ main {
 
 /* Hero Section */
 #hero {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #4B6EE7 0%, #6B3D9F 100%);
     color: #fff;
     padding: 4rem 2rem;
     text-align: center;
@@ -41,21 +41,31 @@ main {
 }
 
 .hero-content h1 {
-    font-size: 2.5rem;
-    margin-bottom: 1.5rem;
-    font-weight: 700;
-    line-height: 1.2;
+    font-family: 'Playfair Display', serif;
+    font-size: 3.8rem;
+    font-weight: 300;
+    line-height: 1;
     color: #ffffff;
+    letter-spacing: -0.02em;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    max-width: 900px;
+    margin: 0 auto 2rem;
+    white-space: nowrap;
 }
 
-.hero-content p {
+.hero-content > p {
+    font-family: 'Inter', sans-serif;
     font-size: 1.2rem;
-    margin-bottom: 2.5rem;
-    color: rgba(255, 255, 255, 0.9);
-    line-height: 1.6;
-    max-width: 600px;
-    margin-left: auto;
-    margin-right: auto;
+    margin: 1rem auto 3rem;
+    color: rgba(255, 255, 255, 0.82);
+    line-height: 1.5;
+    max-width: 480px;
+    font-weight: 300;
+    letter-spacing: 0.2px;
+    text-transform: none;
+    border-top: 1px solid rgba(255, 255, 255, 0.15);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+    padding: 1.5rem 0;
 }
 
 /* Header and Navigation */
@@ -328,7 +338,7 @@ nav {
     align-items: center;
     justify-content: center;
     width: 150px;  
-    padding: 12px 24px;
+    padding: 14px 24px;
     background-color: #4285f4;
     color: white;
     border: none;
@@ -341,8 +351,12 @@ nav {
     white-space: nowrap;
 }
 
+.generate-button {
+    padding: 18px 24px;
+}
+
 .upload-button {
-    width: 135px;  
+    width: 130px;  
 }
 
 .upload-button i {
@@ -478,32 +492,25 @@ nav {
 
 /* AI Processing Steps */
 .ai-processing-container {
-    display: flex;
-    justify-content: space-between;
+    display: none;
+    flex-direction: row;
+    justify-content: center;
     align-items: center;
+    gap: 2rem;
     margin: 20px 0;
-    padding: 10px;
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 10px;
-    position: relative;
+    background: transparent;
 }
 
 .ai-step {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     align-items: center;
-    position: relative;
-    z-index: 1;
+    gap: 0.5rem;
+    background: transparent;
 }
 
 .ai-step::after {
-    content: '';
-    position: absolute;
-    right: -50%;
-    top: 25%;
-    width: 100%;
-    height: 2px;
-    background-color: rgba(255, 255, 255, 0.2);
+    display: none;
 }
 
 .ai-step:last-child::after {
@@ -511,45 +518,53 @@ nav {
 }
 
 .ai-step-icon {
-    width: 40px;
-    height: 40px;
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    margin-bottom: 8px;
     transition: all 0.3s ease;
+    background: transparent;
 }
 
 .ai-step-icon i {
     font-size: 18px;
-    color: rgba(255, 255, 255, 0.7);
+    color: #718096;
 }
 
 .ai-step-text {
-    font-size: 12px;
-    color: rgba(255, 255, 255, 0.7);
+    font-size: 14px;
+    color: #718096;
 }
 
-.ai-step.active .ai-step-icon {
-    background: #4285f4;
+.ai-step.active .ai-step-icon i {
+    color: #4285f4;
 }
 
-.ai-step.active .ai-step-icon i,
 .ai-step.active .ai-step-text {
-    color: white;
+    color: #4285f4;
+    font-weight: 500;
 }
 
-.ai-step.completed .ai-step-icon {
-    background: #34A853;
+.ai-step.completed .ai-step-icon i {
+    color: #34A853;
+}
+
+@keyframes pulse-text {
+    0% { opacity: 1; }
+    50% { opacity: 0.5; }
+    100% { opacity: 1; }
 }
 
 .ai-processing-text {
-    text-align: center;
-    margin-bottom: 10px;
-    font-size: 14px;
-    color: white;
+    font-size: 16px;
+    color: #ffffff;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+    background: none;
+    border: none;
+    box-shadow: none;
+    padding: 0;
+    margin: 0;
+    animation: pulse-text 1.5s ease-in-out infinite;
 }
 
 /* Metadata Display */
