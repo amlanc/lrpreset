@@ -271,48 +271,6 @@
     max-width: 650px;
 }
 
-/* HSL Table Specific Styles */
-.hsl-table-container {
-    overflow-x: hidden;
-    width: 100%;
-}
-
-.hsl-table {
-    table-layout: fixed;
-    width: 100%;
-}
-
-.hsl-table th {
-    text-align: center;
-    padding: 0.75rem 0.5rem;
-    font-size: 11px;
-}
-
-.hsl-table th:first-child {
-    text-align: left;
-    padding-left: 1rem;
-}
-
-.hsl-table td {
-    text-align: center;
-    padding: 0.75rem 0.5rem;
-    font-family: 'Roboto Mono', monospace;
-}
-
-.hsl-table td:first-child {
-    text-align: left;
-    padding-left: 1rem;
-    font-family: inherit;
-    font-weight: 500;
-}
-
-.hsl-color-row:nth-child(even) {
-    background-color: #f8fafc;
-}
-
-.hsl-color-row:hover {
-    background-color: #f1f5f9;
-}
 
 /* Specific styles for preset detail page tables */
 #preset-detail .adjustments-table {
@@ -337,6 +295,25 @@
 #preset-detail .adjustments-table th:last-child {
     text-align: right;
     padding-right: 1.75rem;
+}
+
+/* HSL Tab specific styles */
+#hsl .adjustments-table th,
+#hsl .adjustments-table td {
+    text-align: center;
+    padding: 0.875rem 0.5rem;
+}
+
+#hsl .adjustments-table th:first-child,
+#hsl .adjustments-table td:first-child {
+    text-align: left;
+    padding-left: 1.25rem;
+}
+
+#hsl .adjustments-table td {
+    font-family: 'Roboto Mono', monospace;
+    font-size: 0.8125rem;
+    font-weight: 500;
 }
 
 #preset-detail .adjustments-table td {
@@ -442,45 +419,7 @@
     width: 100%;
 }
 
-/* New HSL Table Structure */
-.hsl-table-container {
-    width: 100%;
-    margin-top: 0.5rem;
-}
 
-.hsl-master-table {
-    width: 100%;
-    border-collapse: separate;
-    border-spacing: 0;
-    background: white;
-    border-radius: 8px;
-    overflow: hidden;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-}
-
-.hsl-color-row {
-    background: white;
-}
-
-.hsl-color-row:hover {
-    background: #f8fafc;
-}
-
-.hsl-color-row .color-name {
-    padding: 12px 15px;
-    font-weight: 600;
-    color: #2d3748;
-    border-right: 1px solid #e2e8f0;
-    background: #f8fafc;
-    width: 120px;
-    text-align: center;
-    vertical-align: middle;
-}
-
-.hsl-color-row .color-properties {
-    padding: 8px 15px;
-    vertical-align: top;
-}
 
 .nested-properties-table {
     width: 100%;

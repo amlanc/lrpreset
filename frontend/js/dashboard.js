@@ -84,7 +84,69 @@ async function loadUserPresets() {
             }
         }
 
-        displayPresetsTable(responseData);
+        // Always expect the response in the format {presets: [...]} as we've standardized the backend
+        let presetsToDisplay = [];
+        
+        if (responseData && responseData.presets) {
+            console.log('Received presets in object format:', responseData.presets.length);
+            presetsToDisplay = responseData.presets;
+        } else if (Array.isArray(responseData)) {
+            // For backward compatibility, handle array format
+            console.log('Received presets in array format:', responseData.length);
+            presetsToDisplay = responseData;
+            console.warn('Backend returned array format instead of {presets: [...]} format');
+        } else {
+            console.error('Unexpected response format:', responseData);
+            // Return empty array in case of unexpected format
+            presetsToDisplay = [];
+        }
+        
+        // Enhanced deduplication logic - use a Map to track by ID for better performance
+        const presetMap = new Map();
+        
+        // First pass: collect all presets by ID, keeping only the most recent version
+        presetsToDisplay.forEach(preset => {
+            const id = preset.id || preset.preset_id;
+            if (!id) {
+                console.warn('Preset without ID:', preset);
+                return; // Skip presets without ID
+            }
+            
+            // If we already have this ID, check which one is newer
+            if (presetMap.has(id)) {
+                const existingPreset = presetMap.get(id);
+                const existingDate = existingPreset.created_at ? new Date(existingPreset.created_at) : new Date(0);
+                const currentDate = preset.created_at ? new Date(preset.created_at) : new Date(0);
+                
+                console.log(`Found duplicate preset with ID: ${id}`);
+                console.log(`  Existing date: ${existingDate.toISOString()}`);
+                console.log(`  Current date: ${currentDate.toISOString()}`);
+                
+                // Only replace if this preset is newer
+                if (currentDate > existingDate) {
+                    console.log(`  Replacing with newer version`);
+                    presetMap.set(id, preset);
+                } else {
+                    console.log(`  Keeping existing version (newer)`);
+                }
+            } else {
+                // First time seeing this ID
+                presetMap.set(id, preset);
+            }
+        });
+        
+        // Convert map values to array
+        const uniquePresets = Array.from(presetMap.values());
+        
+        // Sort by created_at date, newest first
+        uniquePresets.sort((a, b) => {
+            const dateA = a.created_at ? new Date(a.created_at) : new Date(0);
+            const dateB = b.created_at ? new Date(b.created_at) : new Date(0);
+            return dateB - dateA; // Descending order (newest first)
+        });
+        
+        console.log(`Displaying ${uniquePresets.length} unique presets out of ${presetsToDisplay.length} total`);
+        displayPresetsTable(uniquePresets);
 
     } catch (error) {
         console.error('Error loading presets:', error);
@@ -150,9 +212,24 @@ function displayPresetsTable(presets) {
     
     // Debug the presets data structure
     console.log('Presets data received:', presets);
+    console.log('Response data type:', typeof presets);
+    console.log('Response data length:', presets.length);
+    if (presets.length > 0) {
+        console.log('First preset:', presets[0]);
+    }
     
-    // For each preset, create a table row
-    presets.forEach((preset, index) => {
+    // Make sure presets is an array before iterating
+    const presetsArray = Array.isArray(presets) ? presets : [];
+    
+    // Log each preset ID before display
+    console.log('Presets to display:', presetsArray);
+    console.log('Number of presets to display:', presetsArray.length);
+    
+    // We'll use the presets directly since they were already deduplicated in loadUserPresets
+    const uniquePresets = presetsArray;
+    
+    // For each unique preset, create a table row
+    uniquePresets.forEach((preset, index) => {
         // Map the 'id' property to 'preset_id' if needed
         if (preset.id && !preset.preset_id) {
             preset.preset_id = preset.id;
@@ -195,23 +272,194 @@ function displayPresetsTable(presets) {
         };
         previewLink.title = 'View preset details';
         
+        // Create a container div for the preset thumbnail
+        const previewContainer = document.createElement('div');
+        previewContainer.className = 'preset-thumbnail-container';
+        previewContainer.style.width = '100%';
+        previewContainer.style.height = '100%';
+        previewContainer.style.display = 'flex';
+        previewContainer.style.alignItems = 'center';
+        previewContainer.style.justifyContent = 'center';
+        previewContainer.style.backgroundColor = '#f0f0f0';
+        previewContainer.style.borderRadius = '4px';
+        
+        // Create the image element
         const previewImg = document.createElement('img');
         previewImg.alt = preset.name || 'Preset';
         previewImg.className = 'preset-thumbnail';
+        previewImg.style.maxWidth = '100%';
+        previewImg.style.maxHeight = '100%';
+        
+        // Add the image to the container
+        previewContainer.appendChild(previewImg);
+        
+        // Add the container to the link
+        previewLink.appendChild(previewContainer);
         
         // Handle image URL with caching
         const imageUrl = preset.image_url?.trim() || '';
+        console.log(`Preset ${index} image URL:`, imageUrl);
+        
         if (imageUrl) {
-            const cachedProxyUrl = dashboardImageCache.get(imageUrl);
-            if (cachedProxyUrl) {
-                previewImg.src = cachedProxyUrl;
+            // Check if this is a base64 data URL
+            if (imageUrl.startsWith('data:')) {
+                console.log(`Preset ${index}: Detected base64 data URL`);
+                
+                // Check if this is a 1x1 transparent GIF placeholder
+                if (imageUrl === 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7') {
+                    console.log(`Preset ${index}: Detected 1x1 transparent GIF placeholder, using text placeholder instead`);
+                    useTextPlaceholder();
+                } else {
+                    // Use the base64 data URL directly without proxying
+                    console.log(`Preset ${index}: Using non-placeholder base64 data URL`);
+                    previewImg.src = imageUrl;
+                    
+                    // Add onload handler to check dimensions after loading
+                    previewImg.onload = function() {
+                        // Check if this is a very small image (likely a placeholder)
+                        if (this.naturalWidth <= 1 || this.naturalHeight <= 1) {
+                            console.log(`Preset ${index}: Detected small image (${this.naturalWidth}x${this.naturalHeight}), using text placeholder instead`);
+                            useTextPlaceholder();
+                        }
+                    };
+                }
+                
+                // Helper function to create text placeholder
+                function useTextPlaceholder() {
+                    // Don't set the src, we'll use a text placeholder instead
+                    previewImg.style.display = 'none';
+                    
+                    // Add a text placeholder
+                    const textPlaceholder = document.createElement('div');
+                    textPlaceholder.className = 'preset-text-placeholder';
+                    textPlaceholder.textContent = preset.name || 'Preset';
+                    textPlaceholder.style.width = '100%';
+                    textPlaceholder.style.height = '100%';
+                    textPlaceholder.style.display = 'flex';
+                    textPlaceholder.style.alignItems = 'center';
+                    textPlaceholder.style.justifyContent = 'center';
+                    textPlaceholder.style.backgroundColor = '#f0f0f0';
+                    textPlaceholder.style.color = '#666';
+                    textPlaceholder.style.fontSize = '12px';
+                    textPlaceholder.style.fontWeight = 'bold';
+                    textPlaceholder.style.borderRadius = '4px';
+                    
+                    // Add the text placeholder to the container
+                    // Make sure the parent node exists before inserting
+                    if (previewImg.parentNode === previewContainer) {
+                        previewContainer.insertBefore(textPlaceholder, previewImg);
+                    } else {
+                        // If the image isn't in the container yet, just append to container
+                        previewContainer.appendChild(textPlaceholder);
+                    }
+                }
             } else {
-                const proxyUrl = window.utils.getApiUrl('/proxy/image') + '?url=' + encodeURIComponent(imageUrl);
-                dashboardImageCache.set(imageUrl, proxyUrl);
+                // Handle regular URLs
+                // Determine if this is a signed URL (contains token parameter)
+                const isSignedUrl = imageUrl.includes('token=');
+                
+                // For signed URLs, keep the original URL with the token
+                // For non-signed URLs, clean up as before
+                let cleanImageUrl = imageUrl;
+                
+                if (!isSignedUrl) {
+                    // Remove trailing question mark if present
+                    if (cleanImageUrl.endsWith('?')) {
+                        cleanImageUrl = cleanImageUrl.slice(0, -1);
+                        console.log(`Preset ${index}: Removed trailing question mark from URL:`, cleanImageUrl);
+                    }
+                    
+                    // For Supabase URLs, remove any query parameters
+                    if (cleanImageUrl.includes('supabase') && cleanImageUrl.includes('?')) {
+                        cleanImageUrl = cleanImageUrl.split('?')[0];
+                        console.log(`Preset ${index}: Removed query parameters from Supabase URL:`, cleanImageUrl);
+                    }
+                } else {
+                    console.log(`Preset ${index}: Using signed URL with token:`, cleanImageUrl);
+                }
+                
+                // Get user ID for user-specific caching
+                const userId = window.auth.getUserId();
+                console.log(`Preset ${index}: User ID for caching:`, userId);
+                
+                // Create cache key that includes the user ID
+                const cacheKey = `${userId}:${cleanImageUrl}`;
+                
+                // Create the proxy URL directly without caching for now to debug
+                const proxyUrl = window.utils.getApiUrl('/proxy/image') + 
+                    '?url=' + encodeURIComponent(cleanImageUrl) + 
+                    '&user_id=' + encodeURIComponent(userId);
+                
+                console.log(`Preset ${index}: Setting image src to:`, proxyUrl);
                 previewImg.src = proxyUrl;
+                
+                // Store in cache for future use
+                dashboardImageCache.set(cacheKey, proxyUrl);
             }
+            
+            // Only add a general onload handler for non-base64 images
+            // (base64 images already have specific handlers)
+            if (!imageUrl.startsWith('data:')) {
+                previewImg.onload = function() {
+                    console.log(`Preset ${index}: Image loaded successfully`);
+                    
+                    // Check if this is a very small image (likely a placeholder)
+                    if (this.naturalWidth <= 1 || this.naturalHeight <= 1) {
+                        console.log(`Preset ${index}: Detected small image (${this.naturalWidth}x${this.naturalHeight}), using text placeholder`);
+                        
+                        // Use our existing helper function
+                        useTextPlaceholder();
+                    }
+                };
+            }
+            
+            // Store the URL for error handling reference
+            const imageUrlForErrorHandling = imageUrl;
+            
+            // Add error handling for image loading
+            previewImg.onerror = function() {
+                console.error(`Preset ${index}: Failed to load image:`, imageUrlForErrorHandling);
+                
+                // Just hide the image if it fails to load
+                this.style.display = 'none';
+                
+                // Add a text placeholder instead
+                const textPlaceholder = document.createElement('div');
+                textPlaceholder.className = 'preset-text-placeholder';
+                textPlaceholder.textContent = preset.name || 'Preset';
+                textPlaceholder.style.width = '100%';
+                textPlaceholder.style.height = '100%';
+                textPlaceholder.style.display = 'flex';
+                textPlaceholder.style.alignItems = 'center';
+                textPlaceholder.style.justifyContent = 'center';
+                textPlaceholder.style.backgroundColor = '#f0f0f0';
+                textPlaceholder.style.color = '#666';
+                textPlaceholder.style.fontSize = '12px';
+                textPlaceholder.style.fontWeight = 'bold';
+                textPlaceholder.style.borderRadius = '4px';
+                
+                // Insert the text placeholder before the image
+                this.parentNode.insertBefore(textPlaceholder, this);
+                
+                // Try a fallback approach - attempt to load directly from Supabase
+                console.log(`Preset ${index}: Attempting fallback image load`);
+                
+                // Remove the src attribute entirely to prevent broken image icons
+                this.removeAttribute('src');
+                
+                // Add a class to indicate the image failed to load
+                this.classList.add('image-load-failed');
+                
+                // Add a title attribute to explain the issue on hover
+                this.title = 'Image failed to load';
+                
+                // Remove the error handler to prevent further attempts
+                this.onerror = null;
+            };
         } else {
-            previewImg.src = '/img/placeholder.jpg';
+            // No image URL provided, don't show any image
+            previewImg.classList.add('no-image');
+            previewImg.title = 'No image available';
         }
         
         previewLink.appendChild(previewImg);
@@ -223,7 +471,16 @@ function displayPresetsTable(presets) {
         // Created cell
         if (preset.created_at) {
             const createdDate = new Date(preset.created_at);
-            cells.created.textContent = `${createdDate.toLocaleDateString()} ${createdDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+            // Format date in a user-friendly way that matches the preset name format
+            const formattedDate = createdDate.toLocaleString(undefined, {
+                year: 'numeric',
+                month: 'numeric',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: true
+            });
+            cells.created.textContent = formattedDate;
         } else {
             cells.created.textContent = 'Unknown';
         }
@@ -361,132 +618,9 @@ async function deletePreset(presetId) {
     }
 }
 
-/**
- * Validates file size
- * @param {File} file - File to validate
- * @param {number} maxSize - Maximum size in bytes
- * @returns {boolean} - Whether the file is valid
- */
-function validateFileSize(file, maxSize = 10 * 1024 * 1024) { // 10MB max by default
-    if (file.size > maxSize) {
-        const sizeMB = Math.round(file.size / (1024 * 1024));
-        const maxSizeMB = Math.round(maxSize / (1024 * 1024));
-        window.utils.createNotification(
-            `File size (${sizeMB}MB) exceeds maximum allowed size (${maxSizeMB}MB)`,
-            'error',
-            5000
-        );
-        return false;
-    }
-    return true;
-}
+// File validation and display functions have been removed as they should only be in preset-create.js
 
-/**
- * Updates file input display
- * @param {HTMLInputElement} input - File input element
- * @param {HTMLElement} displayElement - Element to display file name
- */
-function updateFileDisplay(input, displayElement) {
-    if (input.files && input.files[0]) {
-        const file = input.files[0];
-        displayElement.textContent = file.name;
-        displayElement.title = file.name;
-        return validateFileSize(file);
-    }
-    displayElement.textContent = '';
-    displayElement.title = '';
-    return true;
-}
-
-/**
- * Creates a new preset
- * @param {File} xmpFile - The XMP file to create preset from
- * @param {File} imageFile - Optional preview image file
- */
-async function createPreset(xmpFile, imageFile) {
-    const createButton = document.getElementById('dashboard-create-preset-button');
-    const loadingSpinner = createButton.querySelector('.loading-spinner');
-    
-    try {
-        // Disable button and show loading state
-        createButton.disabled = true;
-        loadingSpinner.style.display = 'inline-block';
-        
-        // Validate file sizes
-        if (!validateFileSize(xmpFile) || (imageFile && !validateFileSize(imageFile))) {
-            throw new Error('File size validation failed');
-        }
-
-        const formData = new FormData();
-        formData.append('xmp_file', xmpFile);
-        if (imageFile) {
-            formData.append('image_file', imageFile);
-        }
-
-        const response = await fetch(window.utils.getApiUrl('/api/presets'), {
-
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${window.auth.getAuthToken()}`,
-                'Accept': 'application/json'
-            },
-            body: formData
-        });
-
-        console.log('Response status:', response.status);
-        let responseData;
-
-        try {
-            responseData = await response.json();
-            console.log('Response data:', responseData);
-        } catch (e) {
-            console.error('Failed to parse response as JSON:', e);
-            throw new Error('Server returned an invalid response');
-        }
-
-        if (!response.ok) {
-            const errorMessage = responseData.error || 'Failed to create preset';
-            console.error('Server error:', errorMessage);
-            throw new Error(errorMessage);
-        }
-
-        if (!responseData.preset_id) {
-            console.error('Missing preset_id in response:', responseData);
-            throw new Error('Server returned an invalid response');
-        }
-
-        // Reload presets table
-        console.log('Reloading presets table...');
-        await loadUserPresets();
-
-        // Show success notification
-        window.utils.createNotification(
-            responseData.message || 'Preset created successfully!',
-            'success',
-            3000
-        );
-
-        // Reset form
-        const form = document.getElementById('create-preset-form');
-        form.reset();
-        
-        // Clear file name displays
-        document.getElementById('xmp-file-name').textContent = '';
-        document.getElementById('image-file-name').textContent = '';
-
-    } catch (error) {
-        console.error('Error creating preset:', error);
-        window.utils.createNotification(
-            error.message || 'Failed to create preset. Please try again.',
-            'error',
-            5000
-        );
-    } finally {
-        // Re-enable button and hide loading state
-        createButton.disabled = false;
-        loadingSpinner.style.display = 'none';
-    }
-}
+// This function has been removed as preset creation should only be handled in preset-create.js
 
 // Initialize the page when DOM is loaded
 document.addEventListener('DOMContentLoaded', async () => {
@@ -514,35 +648,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Load user presets
     await loadUserPresets();
 
-    // Setup create preset form
-    const createPresetForm = document.getElementById('create-preset-form');
-    const xmpFileInput = document.getElementById('xmp-file');
-    const imageFileInput = document.getElementById('image-file');
-    const xmpFileDisplay = document.getElementById('xmp-file-name');
-    const imageFileDisplay = document.getElementById('image-file-name');
-
-    if (createPresetForm) {
-        // Handle file selection display
-        xmpFileInput?.addEventListener('change', () => {
-            updateFileDisplay(xmpFileInput, xmpFileDisplay);
-        });
-
-        imageFileInput?.addEventListener('change', () => {
-            updateFileDisplay(imageFileInput, imageFileDisplay);
-        });
-
-        createPresetForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            
-            const xmpFile = xmpFileInput?.files[0];
-            const imageFile = imageFileInput?.files[0];
-
-            if (!xmpFile) {
-                window.utils.createNotification('Please select an XMP file', 'error', 3000);
-                return;
-            }
-
-            await createPreset(xmpFile, imageFile);
-        });
-    }
+    // Dashboard should only focus on displaying and managing existing presets
+    // Preset creation functionality has been moved to preset-create.js
 });

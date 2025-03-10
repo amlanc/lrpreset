@@ -701,7 +701,7 @@ function startAIProgressAnimation() {
         "AI is evaluating color balance...",
         "AI is examining composition...",
         "AI is determining optimal adjustments...",
-        "AI is generating preset parameters...",
+        "AI is extracting adjustments...",
         "AI is finalizing your custom preset..."
     ];
     
@@ -996,10 +996,10 @@ function formatLabel(key) {
 // Helper function to format adjustment values
 function formatValue(value) {
     if (typeof value === 'number') {
-        // Format numbers with up to 2 decimal places
-        return value.toFixed(2).replace(/\.00$/, '');
+        // Format numbers with up to 2 decimal places, removing % signs
+        return value.toFixed(2).replace(/\.00$/, '').replace(/%/g, '');
     }
-    return value.toString();
+    return value.toString().replace(/%/g, '');
 }
 
 async function initiateCheckout(presetId) {

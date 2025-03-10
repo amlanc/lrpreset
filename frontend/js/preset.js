@@ -747,11 +747,11 @@ function populateAdjustmentTab(tabId, adjustments) {
     
     // Add each adjustment
     for (const [key, value] of Object.entries(adjustments)) {
-        // Skip the absolute_kelvin entry as we'll use it for temperature display
-        if (key === 'absolute_kelvin' || key === 'absoluteKelvin' || key === 'Absolute_Kelvin') continue;
+        // Don't skip absolute_kelvin anymore, we'll display it as Temperature (K)
+        // if (key === 'absolute_kelvin' || key === 'absoluteKelvin' || key === 'Absolute_Kelvin') continue;
         
         // Skip HSL data in regular tabs - it will be shown in its own tab
-        if ((key === 'hsl' || key === 'HSL') && typeof value === 'object' && value !== null) {
+        if (key.toLocaleLowerCase() === 'hsl' && value !== null &&typeof value === 'object') {
             console.log('Skipping HSL data in regular tab - will be shown in HSL tab');
             continue;
         }
@@ -764,7 +764,14 @@ function populateAdjustmentTab(tabId, adjustments) {
         labelCell.className = 'adjustment-label';
         labelCell.style.textAlign = 'left';
         labelCell.style.paddingLeft = '1.25rem';
-        labelCell.textContent = key === 'temperature' ? 'Temperature' : formatLabel(key);
+        // Special handling for temperature and absolute_kelvin
+        if (key.toLocaleLowerCase() === 'temperature') {
+            labelCell.textContent = 'Temperature';
+        } else if (key.toLocaleLowerCase() === 'absolute_kelvin') {
+            labelCell.textContent = 'Temperature (K)';
+        } else {
+            labelCell.textContent = formatLabel(key);
+        }
         row.appendChild(labelCell);
         
         // Create value cell
@@ -778,14 +785,14 @@ function populateAdjustmentTab(tabId, adjustments) {
             let kelvinValue;
             
             // Log all temperature-related values for debugging
-            console.log('[Preset] Temperature handling:', {
+            console.log('\n[Preset] Temperature handling:', {
                 key,
                 value,
                 absolute_kelvin: adjustments.absolute_kelvin,
                 absoluteKelvin: adjustments.absoluteKelvin,
                 Absolute_Kelvin: adjustments.Absolute_Kelvin,
                 valueType: typeof value,
-                valueIsObject: typeof value === 'object' && value !== null
+                valueIsObject: value !== null && typeof value === 'object'
             });
             
             // Case 1: We have an absolute_kelvin value directly available
@@ -1500,6 +1507,32 @@ function loadPresetDetails(presetId) {
     });
 }
 
+/**
+ * Initialize the download link on the landing page
+ */
+function initializeDownloadLink() {
+    const downloadLink = document.getElementById('xmpDownloadLink');
+    if (downloadLink) {
+        console.log('Initializing download link');
+        downloadLink.addEventListener('click', function(e) {
+            e.preventDefault();
+            
+            // Get the preset ID from the URL or data attribute
+            const presetId = downloadLink.getAttribute('data-preset-id');
+            if (!presetId) {
+                console.error('No preset ID found for download');
+                return;
+            }
+            
+            // Call the download function
+            downloadPreset(presetId);
+        });
+    }
+}
+
+// Initialize the download link when the DOM is loaded
+document.addEventListener('DOMContentLoaded', initializeDownloadLink);
+
 // Export functions to the global namespace
 window.preset = {
     showPresetPreview,
@@ -1510,5 +1543,6 @@ window.preset = {
     loadUserPresets,
     downloadPreset,
     deletePreset,
-    loadPresetDetails
+    loadPresetDetails,
+    initializeDownloadLink
 };

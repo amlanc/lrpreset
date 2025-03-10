@@ -179,13 +179,100 @@ async function loadPresetDetails(presetId) {
                 'Untitled Preset';
         }
         
-        // Update preset image
+        // Update preset image with robust error handling
         const presetImage = document.getElementById('preset-image');
         if (presetImage && data.image_url) {
+            console.log('Loading preset image from URL:', data.image_url);
+            
             // Use the proxy URL for the image
             const proxyUrl = window.utils.getApiUrl('/proxy/image') + '?url=' + encodeURIComponent(data.image_url);
-            presetImage.src = proxyUrl;
-            presetImage.alt = data.preset_id || 'Preset Preview';
+            
+            // Add loading indicator
+            presetImage.classList.add('loading');
+            
+            // Set a placeholder while loading (using a data URI instead of a file)
+            presetImage.src = 'data:image/svg+xml;charset=UTF-8,%3Csvg%20width%3D%22200%22%20height%3D%22200%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Crect%20width%3D%22200%22%20height%3D%22200%22%20fill%3D%22%23f0f0f0%22%2F%3E%3Ctext%20x%3D%22100%22%20y%3D%22100%22%20font-family%3D%22Arial%22%20font-size%3D%2214%22%20text-anchor%3D%22middle%22%20alignment-baseline%3D%22middle%22%20fill%3D%22%23888888%22%3ELoading%20Image...%3C%2Ftext%3E%3C%2Fsvg%3E';
+            presetImage.alt = 'Loading preset image...';
+            
+            // Create a new image object to test loading
+            const imgTest = new Image();
+            
+            // Set up event handlers for the test image
+            imgTest.onload = () => {
+                console.log('Image loaded successfully');
+                
+                // Check if the image URL is a base64 data URL
+                if (data.image_url && data.image_url.startsWith('data:')) {
+                    console.log('Image is a base64 data URL');
+                    
+                    // Check if this is a 1x1 transparent GIF placeholder
+                    if (data.image_url === 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7') {
+                        console.log('Detected 1x1 transparent GIF placeholder, showing SVG placeholder instead');
+                        showPlaceholder();
+                        return;
+                    }
+                    
+                    // For other base64 images, load them directly
+                    presetImage.src = data.image_url;
+                } else {
+                    // For regular URLs, use the proxy
+                    presetImage.src = proxyUrl;
+                }
+                
+                presetImage.alt = data.preset_id || 'Preset Preview';
+                presetImage.classList.remove('loading');
+                presetImage.classList.remove('error');
+                
+                // Add an additional check once the image is actually loaded in the DOM
+                presetImage.onload = function() {
+                    // Check if this is a very small image (likely a placeholder)
+                    if (this.naturalWidth <= 1 || this.naturalHeight <= 1) {
+                        console.log(`Detected small image (${this.naturalWidth}x${this.naturalHeight}), showing SVG placeholder instead`);
+                        showPlaceholder();
+                    }
+                };
+            };
+            
+            // Helper function to show a placeholder image
+            function showPlaceholder() {
+                presetImage.src = 'data:image/svg+xml;charset=UTF-8,%3Csvg%20width%3D%22400%22%20height%3D%22300%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Crect%20width%3D%22400%22%20height%3D%22300%22%20fill%3D%22%23f0f0f0%22%2F%3E%3Ctext%20x%3D%22200%22%20y%3D%22150%22%20font-family%3D%22Arial%22%20font-size%3D%2220%22%20text-anchor%3D%22middle%22%20alignment-baseline%3D%22middle%22%20fill%3D%22%23888888%22%3EPreset%20Preview%3C%2Ftext%3E%3C%2Fsvg%3E';
+                presetImage.classList.add('placeholder-image');
+                presetImage.classList.remove('loading');
+                presetImage.classList.remove('error');
+            }
+            
+            imgTest.onerror = () => {
+                console.error('Failed to load image from URL:', data.image_url);
+                // Try direct URL as fallback
+                const directImg = new Image();
+                
+                directImg.onload = () => {
+                    console.log('Image loaded successfully via direct URL');
+                    presetImage.src = data.image_url;
+                    presetImage.classList.remove('loading');
+                    presetImage.classList.remove('error');
+                };
+                
+                directImg.onerror = () => {
+                    console.error('Failed to load image via direct URL, using placeholder');
+                    presetImage.src = 'data:image/svg+xml;charset=UTF-8,%3Csvg%20width%3D%22200%22%20height%3D%22200%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Crect%20width%3D%22200%22%20height%3D%22200%22%20fill%3D%22%23f0f0f0%22%2F%3E%3Ctext%20x%3D%22100%22%20y%3D%22100%22%20font-family%3D%22Arial%22%20font-size%3D%2214%22%20text-anchor%3D%22middle%22%20alignment-baseline%3D%22middle%22%20fill%3D%22%23888888%22%3EImage%20not%20available%3C%2Ftext%3E%3C%2Fsvg%3E';
+                    presetImage.alt = 'Image not available';
+                    presetImage.classList.remove('loading');
+                    presetImage.classList.add('error');
+                };
+                
+                directImg.src = data.image_url;
+            };
+            
+            // Start loading the test image
+            imgTest.src = proxyUrl;
+        } else {
+            console.warn('No image URL found for preset or image element not found');
+            if (presetImage) {
+                presetImage.src = 'data:image/svg+xml;charset=UTF-8,%3Csvg%20width%3D%22200%22%20height%3D%22200%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Crect%20width%3D%22200%22%20height%3D%22200%22%20fill%3D%22%23f0f0f0%22%2F%3E%3Ctext%20x%3D%22100%22%20y%3D%22100%22%20font-family%3D%22Arial%22%20font-size%3D%2214%22%20text-anchor%3D%22middle%22%20alignment-baseline%3D%22middle%22%20fill%3D%22%23888888%22%3ENo%20image%20available%3C%2Ftext%3E%3C%2Fsvg%3E';
+                presetImage.alt = 'No image available';
+                presetImage.classList.add('error');
+            }
         }
 
         // Populate adjustment tabs with preset data

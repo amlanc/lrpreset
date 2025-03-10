@@ -1,8 +1,11 @@
-from flask import Flask, request, jsonify, send_file, Response, send_from_directory
+from flask import Flask, request, jsonify, send_file, Response, send_from_directory, render_template
 from flask_cors import CORS
 import os
 import datetime
 import uuid
+import base64
+import hashlib
+import time
 from werkzeug.utils import secure_filename
 import llm_handler
 import xmp_generator
@@ -14,6 +17,7 @@ from dotenv import load_dotenv
 import requests
 from urllib.parse import quote_plus
 import sys
+import shutil
 from functools import wraps
 
 # Load environment variables - try multiple possible locations for .env
@@ -28,7 +32,7 @@ if not os.environ.get("SUPABASE_URL") or not os.environ.get("SUPABASE_KEY"):
         load_dotenv(parent_env_path)
 
 # Initialize Flask app with frontend directory as static folder
-app = Flask(__name__, static_folder='../frontend', static_url_path='')
+app = Flask(__name__, static_folder='../frontend', static_url_path='', template_folder='../frontend')
 
 # Allow all origins for development
 # This is not needed for production since frontend and backend are served from the same origin
@@ -37,8 +41,15 @@ CORS(app, resources={r"/*": {"origins": "*"}})
 
 UPLOAD_FOLDER = 'uploads'
 PRESET_FOLDER = 'presets'
+THUMBNAIL_CACHE_FOLDER = 'thumbnail_cache'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['PRESET_FOLDER'] = PRESET_FOLDER
+app.config['THUMBNAIL_CACHE_FOLDER'] = THUMBNAIL_CACHE_FOLDER
+
+# Create necessary directories if they don't exist
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(PRESET_FOLDER, exist_ok=True)
+os.makedirs(THUMBNAIL_CACHE_FOLDER, exist_ok=True)
 
 # Set maximum content length for file uploads (164MB)
 app.config['MAX_CONTENT_LENGTH'] = 164 * 1024 * 1024
@@ -53,9 +64,19 @@ def serve_frontend():
     """Serve the main index.html file"""
     return send_from_directory(app.static_folder, 'index.html')
 
+@app.route('/preset.html')
+def serve_preset():
+    """Serve the preset.html file with the preset ID"""
+    preset_id = request.args.get('id')
+    if not preset_id:
+        return "Preset ID is required", 400
+    return render_template('preset-detail.html', preset_id=preset_id)
+
 @app.route('/<path:path>')
 def serve_static(path):
     """Serve static files from the frontend directory"""
+    if path == 'preset.html':
+        return serve_preset()
     return send_from_directory(app.static_folder, path)
 
 @app.route('/google-callback')
@@ -182,17 +203,20 @@ def upload_image():
         
         # 3. Store in Supabase
         print("Storing in Supabase...")
+        # The store_preset function now returns None if there's a database error
+        # This helps prevent duplicate uploads by not proceeding with incomplete presets
         preset_id = supabase_client.store_preset(user_id, image_data, metadata, xmp_content, original_filename=file.filename)
         
         if not preset_id:
+            app.logger.error(f"Failed to store preset in database for user {user_id}")
             # Check if we have a service role key available
             if not os.environ.get("SUPABASE_SERVICE_KEY"):
                 return jsonify({
-                    'error': 'Failed to store preset. This may be due to Row-Level Security (RLS) restrictions. Please add a SUPABASE_SERVICE_KEY to bypass RLS.'
+                    'error': 'Failed to store preset in database. This may be due to Row-Level Security (RLS) restrictions. Please add a SUPABASE_SERVICE_KEY to bypass RLS.'
                 }), 500
             else:
                 return jsonify({
-                    'error': 'Failed to store preset despite using service role key. Check Supabase logs for details.'
+                    'error': 'Failed to store preset in database. The image files may have been uploaded, but the database entry could not be created. Please try again.'
                 }), 500
         
         # Get the image URL
@@ -205,7 +229,15 @@ def upload_image():
             'preset_data': metadata
         }
         print(f"Returning response: {response_data}")
-        return jsonify(response_data)
+        # Create response with CORS headers
+        response = Response(
+            json.dumps(response_data),
+            mimetype='application/json'
+        )
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+        response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE')
+        return response
         
     except Exception as e:
         import traceback
@@ -253,7 +285,8 @@ def create_checkout(preset_id):
     
     return jsonify(checkout_data), 200
 
-@app.route('/preset/<preset_id>/download', methods=['GET'])
+@app.route('/api/presets/<preset_id>/download', methods=['GET'])
+@require_auth
 def download_preset(preset_id):
     """Download a preset XMP file after verifying purchase"""
     print(f"Download request for preset: {preset_id}")
@@ -333,7 +366,7 @@ def get_user_presets(user_id):
     presets = supabase_client.get_user_presets(user_id)
     return jsonify(presets), 200
 
-@app.route('/presets', methods=['GET'])
+@app.route('/api/presets/user', methods=['GET'])
 @require_auth
 def get_presets():
     """Get all presets for the authenticated user"""
@@ -345,15 +378,10 @@ def get_presets():
     if presets is None:
         presets = []
     
-    # Explicitly create a dictionary with the presets key
-    response_data = {"presets": presets}
-    
-    # Debug the response structure
-    print(f"Response data type: {type(response_data)}")
-    print(f"Response data: {response_data}")
-    
-    # Return the response
-    return jsonify(response_data), 200
+    # Return the presets in a consistent format with a 'presets' key
+    # This ensures the frontend always receives data in the same structure
+    app.logger.info(f"Returning {len(presets)} presets for user {request.user_id}")
+    return jsonify({"presets": presets}), 200
 
 @app.route('/webhook', methods=['POST'])
 def stripe_webhook():
@@ -405,56 +433,55 @@ def google_callback():
 def test_endpoint():
     return jsonify({"status": "success", "message": "Backend is running"}), 200
 
-@app.route('/preset/<preset_id>', methods=['DELETE'])
-def delete_preset(preset_id):
-    """Delete a preset and its associated files"""
+
+
+@app.route('/api/presets/<preset_id>', methods=['GET', 'DELETE'])
+@require_auth
+def preset_endpoint(preset_id):
+    """Handle GET and DELETE operations for a preset"""
     try:
-        # Get the preset first to verify it exists
+        # Get the preset first to verify it exists and check ownership
         preset = supabase_client.get_preset(preset_id)
         if not preset:
             return jsonify({'error': 'Preset not found'}), 404
             
-        # Delete the preset and all associated files
-        success = supabase_client.delete_preset(preset_id, preset['user_id'])
+        # For both GET and DELETE, verify the user owns this preset
+        if preset['user_id'] != request.user_id:
+            return jsonify({'error': 'Unauthorized'}), 403
+            
+        if request.method == 'DELETE':
+            # Delete the preset and all associated files
+            success = supabase_client.delete_preset(preset_id, request.user_id)
+            
+            if success:
+                return jsonify({'message': 'Preset deleted successfully'}), 200
+            else:
+                return jsonify({'error': 'Failed to delete preset'}), 500
         
-        if success:
-            # Delete the original uploaded image if it exists
-            upload_path = os.path.join('uploads', preset_id)
-            if os.path.exists(upload_path):
-                try:
-                    import shutil
-                    shutil.rmtree(upload_path)
-                except Exception as e:
-                    print(f"Error deleting upload directory: {e}")
-            
-            return jsonify({'message': 'Preset deleted successfully'}), 200
-        else:
-            return jsonify({'error': 'Failed to delete preset'}), 500
-            
+        # GET method - retrieve preset details
+        # Extract preset data from the database record
+        metadata_str = preset.get('metadata', '{}')
+        try:
+            preset_data = json.loads(metadata_str) if isinstance(metadata_str, str) else metadata_str
+        except Exception as e:
+            print(f"Error parsing preset metadata: {e}")
+            preset_data = {}
+        
+        # Get the image URL
+        image_url = supabase_client.get_image_url(preset_id)
+        
+        # Return the preset data
+        response = {
+            'preset_id': preset_id,
+            'image_url': image_url,
+            'preset_data': preset_data
+        }
+        
+        return jsonify(response), 200
+        
     except Exception as e:
-        print(f"Error deleting preset: {e}")
+        print(f"Error in preset endpoint: {e}")
         return jsonify({'error': str(e)}), 500
-
-@app.route('/preset/<preset_id>', methods=['GET'])
-def get_preset(preset_id):
-    """Get a preset by ID"""
-    print(f"Getting preset: {preset_id}")
-    
-    # Get user ID from request
-    user_id = request.args.get('user_id', 'anonymous')
-    print(f"User ID: {user_id}")
-    
-    # Get the preset from Supabase
-    preset = supabase_client.get_preset(preset_id)
-    
-    if not preset:
-        print(f"Preset not found: {preset_id}")
-        return jsonify({'error': 'Preset not found'}), 404
-    
-    print(f"Preset found: {preset}")
-    
-    # Return the preset data
-    return jsonify(preset), 200
 
 @app.route('/config', methods=['GET'])
 def get_config():
@@ -502,78 +529,126 @@ def proxy_profile_image():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/proxy/supabase-image', methods=['GET'])
+@require_auth
 def proxy_supabase_image():
-    """Proxy for Supabase images to avoid CORS issues"""
+    """Proxy for Supabase images to avoid CORS issues with authentication"""
     image_url = request.args.get('url')
-    print(f"Proxying Supabase image: {image_url}")
+    user_id = request.user_id
+    
+    app.logger.info(f"Proxying Supabase image for user {user_id}: {image_url}")
     
     if not image_url:
-        print(f"Invalid image URL: {image_url}")
+        app.logger.error(f"Invalid image URL: {image_url}")
         return jsonify({'error': 'Invalid image URL'}), 400
         
+    # Log that we're attempting to fetch this image
+    app.logger.info(f"Attempting to fetch image from: {image_url}")
+        
     try:
+        # Check if this is a signed URL (contains token parameter)
+        token = None
+        if 'token=' in image_url and '?' in image_url:
+            # Extract the token from the URL
+            query_params = image_url.split('?')[1]
+            params = {p.split('=')[0]: p.split('=')[1] for p in query_params.split('&') if '=' in p}
+            token = params.get('token')
+            app.logger.info(f"Found token in URL: {token[:10]}..." if token and len(token) > 10 else f"Found token in URL: {token}")
+            
+        # Clean up the URL by removing any query parameters
+        clean_url = image_url.split('?')[0] if '?' in image_url else image_url
+        app.logger.info(f"Cleaned Supabase URL: {clean_url}")
+        
         # Extract the bucket and path from the URL
-        # URL format: https://azdohxmxldahvebnkekd.supabase.co/storage/v1/object/public/images/user_id/preset_id/image.jpg
-        parts = image_url.split('/storage/v1/object/public/')
+        # Handle all URL formats consistently
+        if '/object/sign/' in clean_url:
+            parts = clean_url.split('/storage/v1/object/sign/')
+        elif '/object/public/' in clean_url:
+            parts = clean_url.split('/storage/v1/object/public/')
+        elif '/object/' in clean_url:
+            parts = clean_url.split('/storage/v1/object/')
+        else:
+            app.logger.error(f"Invalid Supabase URL format: {clean_url}")
+            return jsonify({'error': 'Invalid Supabase URL format'}), 400
+            
         if len(parts) != 2:
+            app.logger.error(f"Invalid Supabase URL format: {clean_url}")
             return jsonify({'error': 'Invalid Supabase URL format'}), 400
             
         bucket_path = parts[1]
-        if '?' in bucket_path:
-            bucket_path = bucket_path.split('?')[0]
-            
-        # Add authorization header with service key
+        
+        # Determine which bucket we're accessing
+        bucket_parts = bucket_path.split('/')
+        bucket_name = bucket_parts[0] if len(bucket_parts) > 0 else ''
+        object_path = '/'.join(bucket_parts[1:]) if len(bucket_parts) > 1 else ''
+        app.logger.info(f"Accessing bucket: {bucket_name}, object path: {object_path}")
+        
+        # Use the Supabase service key if available, otherwise use the anon key
+        auth_token = os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY")
+        
+        # Add authorization header with appropriate key
         headers = {
-            'Authorization': f'Bearer {os.environ.get("SUPABASE_SERVICE_KEY")}',
-            'Accept': 'image/jpeg,image/png,image/*'
+            'Authorization': f'Bearer {auth_token}',
+            'Accept': 'image/jpeg,image/png,image/*',
+            'User-Agent': 'Mozilla/5.0 LRPreset Image Proxy'
         }
         
-        # Construct the private API URL
-        base_url = 'https://azdohxmxldahvebnkekd.supabase.co'
-        private_url = f"{base_url}/storage/v1/object/{bucket_path}"
+        # Create a hash of the URL to use as the filename for caching
+        url_hash = hashlib.md5(image_url.encode()).hexdigest()
+        
+        # Create user-specific cache directory if it doesn't exist
+        user_cache_dir = os.path.join(app.config['THUMBNAIL_CACHE_FOLDER'], user_id) if user_id else app.config['THUMBNAIL_CACHE_FOLDER']
+        os.makedirs(user_cache_dir, exist_ok=True)
+        
+        # Check if we have a cached version
+        cache_path = os.path.join(user_cache_dir, f"{url_hash}.jpg")
+        
+        if os.path.exists(cache_path):
+            app.logger.info(f"Serving cached image for: {image_url}")
+            with open(cache_path, 'rb') as f:
+                image_data = f.read()
+                
+            # Create a Flask response with the cached image data
+            return Response(
+                image_data,
+                content_type='image/jpeg',
+                headers={
+                    'Cache-Control': 'public, max-age=31536000',  # Cache for 1 year
+                    'Access-Control-Allow-Origin': '*'
+                }
+            )
+        
+        # Construct the API URL for all Supabase storage access
+        base_url = os.environ.get("SUPABASE_URL", 'https://azdohxmxldahvebnkekd.supabase.co')
+        
+        # Use a consistent format for all URLs
+        if '/object/sign/' in clean_url and token:
+            # For signed URLs, we need to include the token
+            api_url = f"{base_url}/storage/v1/object/sign/{bucket_name}/{object_path}?token={token}"
+            app.logger.info(f"Using signed URL with token: {api_url}")
+        # We don't use public URLs anymore
+        # All URLs should be either signed or standard with auth headers
+        else:
+            # For regular URLs, use the standard format
+            api_url = f"{base_url}/storage/v1/object/{bucket_name}/{object_path}"
+            app.logger.info(f"Using standard URL: {api_url}")
         
         # Fetch the image from Supabase
-        print(f"Fetching image from: {private_url}")
-        response = requests.get(private_url, headers=headers, stream=True)
+        app.logger.info(f"Fetching image from Supabase API: {api_url}")
+        response = requests.get(api_url, headers=headers, stream=True, timeout=10)
         
         if not response.ok:
-            print(f"Failed to fetch image: {response.status_code}, {response.text}")
+            app.logger.error(f"Failed to fetch image: {response.status_code}, {response.text}")
             return jsonify({'error': f'Failed to fetch image: {response.status_code}'}), response.status_code
         
         # Get the content type from the response
         content_type = response.headers.get('Content-Type', 'image/jpeg')
-        print(f"Image content type: {content_type}")
+        app.logger.info(f"Image content type: {content_type}")
         
-        # Create a Flask response with the image data
-        proxy_response = Response(response.content, content_type=content_type)
-        
-        # Add cache headers (cache for 24 hours)
-        proxy_response.headers['Cache-Control'] = 'public, max-age=86400'
-        
-        return proxy_response
-    
-    except Exception as e:
-        print(f"Error proxying Supabase image: {e}")
-        return jsonify({'error': f'Failed to proxy image: {str(e)}'}), 500
-
-@app.route('/proxy/image', methods=['GET'])
-def proxy_image():
-    """Proxy for images to avoid CORS and Content Security Policy issues"""
-    try:
-        url = request.args.get('url')
-        if not url:
-            return jsonify({'error': 'No URL provided'}), 400
+        # Save the image to the cache
+        with open(cache_path, 'wb') as f:
+            f.write(response.content)
             
-        print(f"Proxying image from: {url}")
-        
-        # Get the image
-        response = requests.get(url, stream=True)
-        if not response.ok:
-            print(f"Failed to fetch image: {response.status_code}, {response.text}")
-            return jsonify({'error': f'Failed to fetch image: {response.status_code}'}), response.status_code
-            
-        # Get content type from response or default to image/jpeg
-        content_type = response.headers.get('Content-Type', 'image/jpeg')
+        app.logger.info(f"Cached image at: {cache_path}")
         
         # Create a Flask response with the image data
         proxy_response = Response(
@@ -586,9 +661,331 @@ def proxy_image():
         )
         
         return proxy_response
+    
+    except Exception as e:
+        app.logger.error(f"Error proxying Supabase image: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': f'Failed to proxy image: {str(e)}'}), 500
+
+@app.route('/proxy/image', methods=['GET'])
+def proxy_image():
+    """Proxy for images to avoid CORS and Content Security Policy issues with local caching"""
+    try:
+        url = request.args.get('url')
+        user_id = request.args.get('user_id')  # Get user_id from query params for caching
+        
+        if not url:
+            return jsonify({'error': 'No URL provided'}), 400
+            
+        # Check if this is a base64 data URL
+        if url.startswith('data:'):
+            app.logger.info(f"Detected base64 data URL, returning directly")
+            # Parse the data URL
+            try:
+                # Extract content type and base64 data
+                content_type = url.split(',')[0].split(':')[1].split(';')[0]
+                base64_data = url.split(',')[1]
+                # Decode the base64 data
+                image_data = base64.b64decode(base64_data)
+                
+                # Return the decoded image data directly
+                return Response(
+                    image_data,
+                    content_type=content_type,
+                    headers={
+                        'Cache-Control': 'public, max-age=31536000',  # Cache for 1 year
+                        'Access-Control-Allow-Origin': '*'
+                    }
+                )
+            except Exception as e:
+                app.logger.error(f"Error processing base64 data URL: {str(e)}")
+                return jsonify({'error': 'Invalid base64 data URL'}), 400
+            
+        # Clean up the URL - remove trailing question mark if present
+        if url.endswith('?'):
+            url = url[:-1]
+            
+        # Check if the URL is a Supabase URL and fix any issues
+        if 'supabase' in url:
+            app.logger.info(f"Processing Supabase URL: {url}")
+            
+            # For signed URLs, preserve the query parameters which contain the token
+            if 'token=' in url:
+                app.logger.info(f"Detected signed URL with token")
+                # Keep the URL as is since it's a signed URL with a token
+                pass
+            else:
+                # For non-signed URLs, remove query parameters that might cause issues
+                if '?' in url and not url.endswith('?'):
+                    url = url.split('?')[0]
+                    app.logger.info(f"Removed query parameters from URL: {url}")
+                
+                # For Supabase URLs, if they contain 'public', remove it
+                if '/storage/v1/object/public/' in url:
+                    url = url.replace('/storage/v1/object/public/', '/storage/v1/object/')
+                    app.logger.info(f"Removed 'public' from Supabase URL: {url}")
+            
+        # Create a hash of the URL to use as the filename
+        url_hash = hashlib.md5(url.encode()).hexdigest()
+        
+        # Create user-specific cache directory if it doesn't exist
+        user_cache_dir = os.path.join(app.config['THUMBNAIL_CACHE_FOLDER'], user_id) if user_id else app.config['THUMBNAIL_CACHE_FOLDER']
+        os.makedirs(user_cache_dir, exist_ok=True)
+        
+        # Check if we have a cached version
+        cache_path = os.path.join(user_cache_dir, f"{url_hash}.jpg")
+        
+        if os.path.exists(cache_path):
+            print(f"Serving cached image for: {url}")
+            with open(cache_path, 'rb') as f:
+                image_data = f.read()
+                
+            # Create a Flask response with the cached image data
+            return Response(
+                image_data,
+                content_type='image/jpeg',
+                headers={
+                    'Cache-Control': 'public, max-age=31536000',  # Cache for 1 year
+                    'Access-Control-Allow-Origin': '*'
+                }
+            )
+        
+        print(f"Proxying image from: {url}")
+        
+        # Get the image with proper error handling
+        try:
+            # Add proper headers to avoid potential issues with Supabase
+            headers = {
+                'Accept': 'image/jpeg, image/png, image/webp, image/*',
+                'User-Agent': 'Mozilla/5.0 LRPreset Image Proxy'
+            }
+            
+            app.logger.info(f"Attempting to fetch image from: {url}")
+            response = requests.get(url, stream=True, timeout=10, headers=headers)  # Add timeout for safety
+            
+            if not response.ok:
+                app.logger.error(f"Failed to fetch image: {response.status_code}, {response.text}")
+                
+                # Log additional details for Supabase URLs to help with debugging
+                if 'supabase' in url:
+                    app.logger.error(f"Supabase URL failed: {url}")
+                    # Check if URL has query parameters that might be causing issues
+                    if '?' in url:
+                        app.logger.info(f"URL contains query parameters which might be causing issues")
+                    
+                    # Log headers that might be helpful for debugging
+                    app.logger.info(f"Response headers: {response.headers}")
+                
+                # Return the error directly without any fallbacks
+                return jsonify({'error': f'Failed to fetch image: {response.status_code}'}), response.status_code
+            
+            # Get content type from response or default to image/jpeg
+            content_type = response.headers.get('Content-Type', 'image/jpeg')
+            
+            # Save the image to the cache
+            with open(cache_path, 'wb') as f:
+                f.write(response.content)
+                
+            print(f"Cached image at: {cache_path}")
+            
+            # Create a Flask response with the image data
+            proxy_response = Response(
+                response.content,
+                content_type=content_type,
+                headers={
+                    'Cache-Control': 'public, max-age=31536000',  # Cache for 1 year
+                    'Access-Control-Allow-Origin': '*'
+                }
+            )
+            
+            return proxy_response
+            
+        except requests.RequestException as e:
+            print(f"Request error when proxying image: {str(e)}")
+            return jsonify({'error': f'Failed to fetch image: {str(e)}'}), 400
         
     except Exception as e:
         print(f"Error proxying image: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+# Dictionary to track recently processed requests to prevent duplicates
+recent_requests = {}
+# Maximum age of request IDs to keep in memory (in seconds)
+REQUEST_ID_MAX_AGE = 300  # Increased to 5 minutes for better protection against duplicates
+
+@app.route('/api/presets', methods=['POST'])
+@require_auth
+def create_preset():
+    """Create a new preset from an XMP file"""
+    try:
+        print("Starting create_preset function")
+        # Get user ID from the authenticated request
+        user_id = request.user_id
+        print(f"User ID: {user_id}")
+        
+        # Check for request ID in headers to prevent duplicate processing
+        request_id = request.headers.get('X-Request-ID')
+        if not request_id:
+            # Generate a request ID if not provided
+            request_id = str(uuid.uuid4())
+            print(f"Generated request ID: {request_id}")
+        else:
+            print(f"Received request ID: {request_id}")
+            
+        # Check if this request was recently processed
+        current_time = time.time()
+        # Clean up old request IDs
+        for req_id in list(recent_requests.keys()):
+            if current_time - recent_requests[req_id]['timestamp'] > REQUEST_ID_MAX_AGE:
+                del recent_requests[req_id]
+                
+        if request_id in recent_requests:
+            print(f"Duplicate request detected with ID: {request_id}")
+            # Return the cached response for this request ID
+            cached_response = recent_requests[request_id]['response']
+            print(f"Returning cached response: {cached_response}")
+            return jsonify(cached_response), 200
+
+        # Check if XMP file is provided
+        if 'xmp_file' not in request.files:
+            print("No XMP file in request")
+            return jsonify({'error': 'No XMP file provided'}), 400
+
+        xmp_file = request.files['xmp_file']
+        print(f"XMP file name: {xmp_file.filename}")
+
+        if xmp_file.filename == '':
+            print("Empty XMP filename")
+            return jsonify({'error': 'No XMP file selected'}), 400
+
+        # Validate XMP file extension
+        if not xmp_file.filename.lower().endswith('.xmp'):
+            print(f"Invalid file extension: {xmp_file.filename}")
+            return jsonify({'error': 'Invalid file type. Only XMP files are allowed.'}), 400
+
+        # Read and validate XMP file content
+        try:
+            print("Reading XMP file content")
+            xmp_content = xmp_file.read()
+            print(f"XMP content length: {len(xmp_content)} bytes")
+
+            # Check file size (10MB limit)
+            max_size = 10 * 1024 * 1024  # 10MB in bytes
+            if len(xmp_content) > max_size:
+                print(f"XMP file too large: {len(xmp_content)} bytes")
+                return jsonify({'error': f'XMP file size exceeds maximum allowed size of 10MB'}), 400
+
+            # Validate XMP content
+            print("Validating XMP content")
+            xmp_text = xmp_content.decode('utf-8')
+            if not xmp_text.strip():
+                print("Empty XMP content")
+                return jsonify({'error': 'XMP file is empty'}), 400
+            if '<?xpacket' not in xmp_text:
+                print("Invalid XMP format - missing <?xpacket tag")
+                return jsonify({'error': 'Invalid XMP file format'}), 400
+            print("XMP content validation successful")
+
+            # Seek back to start of file for re-reading
+            xmp_file.seek(0)
+            xmp_content = xmp_file.read()
+        except Exception as e:
+            print(f"Error reading/validating XMP file: {str(e)}")
+            return jsonify({'error': 'Failed to read or validate XMP file'}), 400
+        except UnicodeDecodeError as e:
+            print(f"XMP decode error: {str(e)}")
+            return jsonify({'error': 'XMP file must be valid UTF-8 text'}), 400
+
+        # Handle optional image file
+        image_data = None
+        if 'image' in request.files:
+            image_file = request.files['image']
+            print(f"Image file name: {image_file.filename}")
+
+            if image_file.filename != '':
+                # Validate image file
+                if not allowed_file(image_file.filename):
+                    print(f"Invalid image file type: {image_file.filename}")
+                    return jsonify({'error': 'Invalid image file type. Allowed types are: jpg, jpeg, png, webp'}), 400
+
+                try:
+                    print("Reading image file content")
+                    image_data = image_file.read()
+                    print(f"Image content length: {len(image_data)} bytes")
+
+                    if len(image_data) > max_size:
+                        print(f"Image file too large: {len(image_data)} bytes")
+                        return jsonify({'error': f'Image file size exceeds maximum allowed size of 10MB'}), 400
+                except Exception as e:
+                    print(f"Error reading image file: {str(e)}")
+                    return jsonify({'error': 'Failed to read image file'}), 400
+
+        # Get preset name from form data or use XMP filename
+        preset_name = request.form.get('name')
+        if not preset_name:
+            preset_name = os.path.splitext(xmp_file.filename)[0]
+        print(f"Preset name: {preset_name}")
+
+        # Store in Supabase
+        try:
+            print("Storing preset in Supabase")
+            metadata = {
+                'name': preset_name,
+                'created_at': datetime.datetime.utcnow().isoformat(),
+                'file_size': len(xmp_content),
+                'has_image': image_data is not None,
+                'file_name': xmp_file.filename,
+                'created_by': user_id,
+                'type': 'xmp',
+                'status': 'active'
+            }
+            print(f"Metadata: {metadata}")
+
+            preset_id = supabase_client.store_preset(
+                user_id=user_id,
+                image_data=image_data,
+                metadata=metadata,
+                xmp_content=xmp_content,  # Use original binary content
+                original_filename=xmp_file.filename
+            )
+            print(f"Successfully stored preset with ID: {preset_id}")
+
+            if not preset_id:
+                print("No preset ID returned from Supabase")
+                return jsonify({'error': 'Failed to store preset - no ID returned'}), 500
+
+            # Get the preset details from Supabase
+            preset_data = supabase_client.get_preset(preset_id)
+            if not preset_data:
+                print("Failed to get preset data after creation")
+                return jsonify({
+                    'error': 'Failed to get preset data after creation'
+                }), 500
+
+            response_data = {
+                'preset_id': preset_id,  # Use consistent key naming
+                'preset_data': preset_data,
+                'image_url': preset_data.get('image_url'),
+                'message': 'Preset created successfully'
+            }
+            
+            # Store the response in our tracking dictionary
+            if request_id:
+                recent_requests[request_id] = {
+                    'timestamp': time.time(),
+                    'response': response_data
+                }
+                print(f"Cached response for request ID: {request_id}")
+            
+            return jsonify(response_data), 201
+
+        except Exception as e:
+            print(f"Supabase storage error: {str(e)}")
+            return jsonify({'error': f'Failed to store preset: {str(e)}'}), 500
+
+    except Exception as e:
+        print(f"Unexpected error in create_preset: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/proxy/xmp-file', methods=['GET'])
@@ -633,6 +1030,302 @@ def proxy_xmp_file():
     except Exception as e:
         print(f"Error proxying XMP file: {e}")
         return jsonify({'error': str(e)}), 500
+
+@app.route('/api/presets/analyze', methods=['POST'])
+@require_auth
+def analyze_image():
+    """Analyze an image and return adjustment parameters"""
+    try:
+        # Get user ID from the authenticated request
+        user_id = request.user_id
+        
+        # Check for request ID in headers to prevent duplicate processing
+        request_id = request.headers.get('X-Request-ID')
+        if not request_id:
+            # Generate a request ID if not provided
+            request_id = str(uuid.uuid4())
+            print(f"Generated request ID for analyze: {request_id}")
+        else:
+            print(f"Received request ID for analyze: {request_id}")
+            
+        # Check if this request was recently processed
+        current_time = time.time()
+        # Clean up old request IDs
+        for req_id in list(recent_requests.keys()):
+            if current_time - recent_requests[req_id]['timestamp'] > REQUEST_ID_MAX_AGE:
+                del recent_requests[req_id]
+                
+        if request_id in recent_requests:
+            print(f"Duplicate analyze request detected with ID: {request_id}")
+            # Return the cached response for this request ID
+            cached_response = recent_requests[request_id]['response']
+            print(f"Returning cached analyze response for request ID: {request_id}")
+            return jsonify(cached_response), 200
+        
+        # Check if the post request has the file part
+        if 'image' not in request.files:
+            app.logger.error(f"[User {user_id}] No image file in request")
+            return jsonify({'error': 'Please select an image to upload'}), 400
+        
+        file = request.files['image']
+        
+        # If user does not select file, browser also submit an empty part without filename
+        if file.filename == '':
+            app.logger.error(f"[User {user_id}] Empty filename in request")
+            return jsonify({'error': 'Please select an image to upload'}), 400
+        
+        # Check if the file is allowed
+        if not allowed_file(file.filename):
+            app.logger.error(f"[User {user_id}] Invalid file type: {file.filename}")
+            return jsonify({'error': 'Please upload a JPG, PNG or WebP image'}), 400
+        
+        # Check file size (max 50MB for initial upload)
+        file.seek(0, os.SEEK_END)
+        size = file.tell()
+        if size > 50 * 1024 * 1024:  # 50MB
+            app.logger.error(f"[User {user_id}] File too large: {size} bytes")
+            return jsonify({'error': 'Image size must be less than 50MB'}), 400
+        
+        # Log if the file is large but acceptable (will be resized later)
+        if size > 10 * 1024 * 1024:  # 10MB
+            app.logger.info(f"[User {user_id}] Large file detected: {size} bytes. Will be resized automatically.")
+        
+        # Reset file pointer
+        file.seek(0)
+        
+        # Read the image data
+        try:
+            image_data = file.read()
+            app.logger.info(f"[User {user_id}] Read {len(image_data)} bytes from {file.filename}")
+        except Exception as e:
+            app.logger.error(f"[User {user_id}] Failed to read image data: {str(e)}")
+            return jsonify({'error': 'Failed to read image data'}), 500
+        
+        # Resize large images before processing
+        if len(image_data) > 10 * 1024 * 1024:  # 10MB
+            try:
+                app.logger.info(f"[User {user_id}] Resizing large image before processing")
+                image_data = llm_handler.resize_image_if_needed(image_data)
+                app.logger.info(f"[User {user_id}] Image resized to {len(image_data)} bytes")
+            except Exception as e:
+                app.logger.error(f"[User {user_id}] Image resizing failed: {str(e)}")
+                # Continue with original image if resizing fails
+        
+        # Process with LLM
+        try:
+            app.logger.info(f"[User {user_id}] Processing image with LLM")
+            metadata = llm_handler.generate_preset_from_image(image_data)
+            
+            if not metadata:
+                app.logger.error(f"[User {user_id}] LLM returned no metadata")
+                return jsonify({'error': 'Failed to analyze image. Please try again.'}), 500
+            
+            app.logger.info(f"[User {user_id}] Successfully analyzed image")
+            
+            # Save the preset to the database
+            try:
+                # Generate a unique preset ID
+                preset_id = str(uuid.uuid4())
+                
+                # Upload the image to Supabase storage first
+                try:
+                    image_path = f"{user_id}/{preset_id}/image.jpg"
+                    app.logger.info(f"[User {user_id}] Uploading image to Supabase storage: {image_path}")
+                    
+                    # Upload with explicit content type
+                    upload_response = supabase_client.supabase.storage.from_("images").upload(
+                        path=image_path,
+                        file=image_data,
+                        file_options={"content-type": "image/jpeg"}
+                    )
+                    app.logger.info(f"[User {user_id}] Image upload successful")
+                    
+                    # Generate a signed URL for the image that expires in 24 hours
+                    signed_url_response = supabase_client.supabase.storage.from_("images").create_signed_url(image_path, 86400)
+                    if isinstance(signed_url_response, dict) and 'signedURL' in signed_url_response:
+                        image_url = signed_url_response['signedURL']
+                    else:
+                        app.logger.error(f"[User {user_id}] Failed to generate signed URL: {signed_url_response}")
+                        # Fallback to direct URL
+                        image_url = supabase_client.supabase.storage.from_("images").get_public_url(image_path)
+                        # Remove 'public' from URL if present
+                        if '/object/public/' in image_url:
+                            image_url = image_url.replace('/storage/v1/object/public/', '/storage/v1/object/')
+                    # Remove any trailing question mark that might cause issues with proxying
+                    if image_url.endswith('?'):
+                        image_url = image_url[:-1]
+                    app.logger.info(f"[User {user_id}] Image URL: {image_url}")
+                except Exception as img_err:
+                    app.logger.error(f"[User {user_id}] Failed to upload image: {str(img_err)}")
+                        # Use a placeholder URL if upload fails
+                    # This is a base64 encoded 1x1 transparent pixel
+                    image_url = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
+                    app.logger.info(f"[User {user_id}] Using base64 placeholder image for preset {preset_id}")
+                
+                # Create a preset record
+                # Generate a basic XMP file from metadata
+                try:
+                    # Generate XMP content using the xmp_generator module
+                    xmp_content = xmp_generator.generate_xmp(metadata)
+                    
+                    # Get the original filename without extension
+                    original_filename = os.path.splitext(file.filename)[0]
+                    
+                    # Log the preset ID we're using to ensure consistency
+                    app.logger.info(f"[User {user_id}] Using preset ID: {preset_id} for all operations")
+                    
+                    # Create XMP file path using the original filename
+                    xmp_path = f"{user_id}/{preset_id}/{original_filename}.xmp"
+                    app.logger.info(f"[User {user_id}] Uploading XMP to Supabase storage: {xmp_path}")
+                    
+                    # Upload XMP file
+                    upload_xmp_response = supabase_client.supabase.storage.from_("presets").upload(
+                        path=xmp_path,
+                        file=xmp_content.encode('utf-8'),
+                        file_options={"content-type": "application/xml"}
+                    )
+                    app.logger.info(f"[User {user_id}] XMP upload successful")
+                    
+                    # Generate a signed URL for the XMP that expires in 24 hours
+                    signed_url_response = supabase_client.supabase.storage.from_("presets").create_signed_url(xmp_path, 86400)
+                    if isinstance(signed_url_response, dict) and 'signedURL' in signed_url_response:
+                        xmp_url = signed_url_response['signedURL']
+                    else:
+                        app.logger.error(f"[User {user_id}] Failed to generate signed URL for XMP: {signed_url_response}")
+                        # Fallback to direct URL
+                        xmp_url = supabase_client.supabase.storage.from_("presets").get_public_url(xmp_path)
+                        # Remove 'public' from URL if present
+                        if '/object/public/' in xmp_url:
+                            xmp_url = xmp_url.replace('/storage/v1/object/public/', '/storage/v1/object/')
+                    # Remove any trailing question mark that might cause issues with proxying
+                    if xmp_url.endswith('?'):
+                        xmp_url = xmp_url[:-1]
+                    app.logger.info(f"[User {user_id}] XMP URL: {xmp_url}")
+                except Exception as xmp_err:
+                    app.logger.error(f"[User {user_id}] Failed to upload XMP: {str(xmp_err)}")
+                    # Create a simple placeholder XMP file if upload fails
+                    try:
+                        # Create a basic placeholder XMP file
+                        placeholder_xmp = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"/>\n"
+                        placeholder_path = "placeholder.xmp"
+                        
+                        # Try to upload the placeholder if it doesn't exist
+                        try:
+                            # First check if the file exists
+                            try:
+                                # Try to get the file info - will throw an exception if it doesn't exist
+                                # Get URL and remove 'public' if present
+                                placeholder_url = supabase_client.supabase.storage.from_("presets").get_public_url(placeholder_path)
+                                if '/object/public/' in placeholder_url:
+                                    placeholder_url = placeholder_url.replace('/storage/v1/object/public/', '/storage/v1/object/')
+                                placeholder_url
+                                app.logger.info(f"[User {user_id}] Placeholder XMP already exists")
+                            except Exception:
+                                # File doesn't exist, so upload it
+                                supabase_client.supabase.storage.from_("presets").upload(
+                                    path=placeholder_path,
+                                    file=placeholder_xmp.encode('utf-8'),
+                                    file_options={"content-type": "application/xml"}
+                                )
+                                app.logger.info(f"[User {user_id}] Uploaded placeholder XMP")
+                        except Exception as placeholder_err:
+                            app.logger.warning(f"[User {user_id}] Failed to handle placeholder XMP: {str(placeholder_err)}")
+                        
+                        # Generate a signed URL for the placeholder XMP that expires in 24 hours
+                        signed_url_response = supabase_client.supabase.storage.from_("presets").create_signed_url(placeholder_path, 86400)
+                        if isinstance(signed_url_response, dict) and 'signedURL' in signed_url_response:
+                            xmp_url = signed_url_response['signedURL']
+                        else:
+                            app.logger.error(f"[User {user_id}] Failed to generate signed URL for placeholder XMP: {signed_url_response}")
+                            # Fallback to direct URL
+                            xmp_url = supabase_client.supabase.storage.from_("presets").get_public_url(placeholder_path)
+                            # Remove 'public' from URL if present
+                            if '/object/public/' in xmp_url:
+                                xmp_url = xmp_url.replace('/storage/v1/object/public/', '/storage/v1/object/')
+                        # Remove any trailing question mark that might cause issues with proxying
+                        if xmp_url.endswith('?'):
+                            xmp_url = xmp_url[:-1]
+                    except Exception as placeholder_err:
+                        app.logger.error(f"[User {user_id}] Failed to create placeholder XMP: {str(placeholder_err)}")
+                        # Last resort - hardcoded URL
+                        xmp_url = "https://azdohxmxldahvebnkekd.supabase.co/storage/v1/object/presets/placeholder.xmp"
+                
+                preset_data = {
+                    "id": preset_id,
+                    "user_id": user_id,
+                    "name": f"Preset {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}",
+                    "metadata": json.dumps(metadata),
+                    "created_at": datetime.datetime.now().isoformat(),
+                    "image_url": image_url,  # Now we have an image URL
+                    "xmp_url": xmp_url       # Add XMP URL to satisfy database constraint
+                }
+                
+                # Save to database
+                app.logger.info(f"[User {user_id}] Attempting to save preset with ID: {preset_id}")
+                preset_saved = supabase_client.create_preset(preset_data)
+                
+                if preset_saved:
+                    app.logger.info(f"[User {user_id}] Successfully saved preset with ID: {preset_id}")
+                else:
+                    app.logger.warning(f"[User {user_id}] Failed to save preset with ID: {preset_id} to database, but continuing")
+                    # Log detailed preset data for debugging (excluding potentially large fields)
+                    debug_data = {k: v for k, v in preset_data.items() if k not in ['metadata']}
+                    app.logger.debug(f"Preset data that failed to save: {debug_data}")
+                
+                # Add preset_id to metadata response
+                metadata["preset_id"] = preset_id
+                metadata["saved_to_database"] = preset_saved
+                
+                # Store response in cache to prevent duplicate processing
+                recent_requests[request_id] = {
+                    'timestamp': time.time(),
+                    'response': metadata
+                }
+                print(f"Stored analyze response in cache with request ID: {request_id}")
+                
+                return jsonify(metadata)
+            except Exception as e:
+                app.logger.error(f"[User {user_id}] Failed to save preset: {str(e)}")
+                # Still return metadata with preset_id even if saving to database fails
+                # Use the existing preset_id that was already generated at the beginning of the function
+                metadata["preset_id"] = preset_id
+                app.logger.info(f"[User {user_id}] Using existing preset ID: {preset_id}")
+                
+                # Store response in cache to prevent duplicate processing
+                recent_requests[request_id] = {
+                    'timestamp': time.time(),
+                    'response': metadata
+                }
+                print(f"Stored analyze response in cache with request ID: {request_id} (after database save error)")
+                
+                return jsonify(metadata)
+            
+        except Exception as e:
+            app.logger.error(f"[User {user_id}] LLM processing failed: {str(e)}")
+            error_response = {'error': 'Failed to analyze image. Please try again.'}
+            
+            # Store error response in cache to prevent duplicate processing
+            recent_requests[request_id] = {
+                'timestamp': time.time(),
+                'response': error_response
+            }
+            print(f"Stored error response in cache with request ID: {request_id} (LLM processing failed)")
+            
+            return jsonify(error_response), 500
+        
+    except Exception as e:
+        app.logger.error(f"Unexpected error in analyze_image: {str(e)}")
+        error_response = {'error': 'An unexpected error occurred. Please try again.'}
+        
+        # Only store in cache if request_id exists (might not exist if error occurred before request_id was set)
+        if 'request_id' in locals():
+            recent_requests[request_id] = {
+                'timestamp': time.time(),
+                'response': error_response
+            }
+            print(f"Stored error response in cache with request ID: {request_id} (unexpected error)")
+        
+        return jsonify(error_response), 500
 
 # Run the application
 if __name__ == "__main__":
