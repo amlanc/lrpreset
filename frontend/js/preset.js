@@ -35,6 +35,10 @@ function showPresetPreview(presetId, imageUrl, presetData) {
         return;
     }
     
+    // Set the preset ID on the download button
+    downloadButton.setAttribute('data-preset-id', presetId);
+    console.log('Set preset ID on download button:', presetId);
+    
     // Parse preset data if it's a string
     let parsedPresetData = presetData;
     if (typeof presetData === 'string') {
@@ -1357,6 +1361,11 @@ function handleCreatePresetClick() {
                 image_url: data.image_url,
                 preset_data_type: typeof data.preset_data
             });
+            
+            // Store the preset ID in localStorage for the download button
+            localStorage.setItem('lastCreatedPresetId', data.preset_id);
+            console.log('Stored preset ID in localStorage:', data.preset_id);
+            
             showPresetPreview(data.preset_id, data.image_url, data.preset_data);
         } else {
             console.error('Invalid response data:', data);
@@ -1511,22 +1520,45 @@ function loadPresetDetails(presetId) {
  * Initialize the download link on the landing page
  */
 function initializeDownloadLink() {
-    const downloadLink = document.getElementById('xmpDownloadLink');
+    // Check for both possible download button IDs
+    const downloadLink = document.getElementById('xmpDownloadLink') || document.getElementById('download-button');
     if (downloadLink) {
-        console.log('Initializing download link');
-        downloadLink.addEventListener('click', function(e) {
+        console.log('Initializing download link with ID:', downloadLink.id);
+        
+        // Remove any existing event listeners to prevent duplicates
+        const newDownloadLink = downloadLink.cloneNode(true);
+        downloadLink.parentNode.replaceChild(newDownloadLink, downloadLink);
+        
+        newDownloadLink.addEventListener('click', function(e) {
             e.preventDefault();
+            console.log('Download button clicked');
             
             // Get the preset ID from the URL or data attribute
-            const presetId = downloadLink.getAttribute('data-preset-id');
+            let presetId = newDownloadLink.getAttribute('data-preset-id');
+            
+            // If no preset ID in data attribute, try to get it from URL
+            if (!presetId) {
+                // Try to get preset ID from URL parameter
+                presetId = window.utils.getUrlParameter('id');
+            }
+            
+            // If still no preset ID, try to get it from localStorage
+            if (!presetId) {
+                presetId = localStorage.getItem('lastCreatedPresetId');
+            }
+            
             if (!presetId) {
                 console.error('No preset ID found for download');
+                alert('No preset ID found. Please try creating a preset first.');
                 return;
             }
             
+            console.log('Downloading preset with ID:', presetId);
             // Call the download function
             downloadPreset(presetId);
         });
+    } else {
+        console.log('No download button found on this page');
     }
 }
 

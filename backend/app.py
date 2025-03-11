@@ -296,9 +296,25 @@ def download_preset(preset_id):
     print(f"User ID: {user_id}")
     
     # Get the preset from Supabase
+    print(f"Getting preset from Supabase: {preset_id}")
     preset = supabase_client.get_preset(preset_id)
+    
+    # Debug: Check if preset exists and log available presets
     if not preset:
         print(f"Preset not found: {preset_id}")
+        
+        # Get all presets for debugging
+        try:
+            all_presets = supabase_client.get_all_presets()
+            preset_ids = [p.get('id') for p in all_presets if p.get('id')]
+            print(f"Available preset IDs: {preset_ids}")
+            
+            # Check if the requested preset ID is similar to any available IDs (typo check)
+            for pid in preset_ids:
+                if len(pid) == len(preset_id) and sum(a != b for a, b in zip(pid, preset_id)) <= 3:
+                    print(f"Possible match found: {pid} is similar to requested {preset_id}")
+        except Exception as e:
+            print(f"Error getting all presets: {e}")
         return jsonify({'error': 'Preset not found'}), 404
     
     # For testing purposes, skip payment verification
@@ -382,6 +398,38 @@ def get_presets():
     # This ensures the frontend always receives data in the same structure
     app.logger.info(f"Returning {len(presets)} presets for user {request.user_id}")
     return jsonify({"presets": presets}), 200
+
+@app.route('/api/presets/latest', methods=['GET'])
+@require_auth
+def get_latest_preset():
+    """Get the most recent preset for the authenticated user"""
+    print(f"Getting latest preset for authenticated user: {request.user_id}")
+    presets = supabase_client.get_user_presets(request.user_id)
+    
+    if not presets or len(presets) == 0:
+        print(f"No presets found for user: {request.user_id}")
+        return jsonify({"error": "No presets found for user"}), 404
+    
+    print(f"Found {len(presets)} presets for user: {request.user_id}")
+    print(f"Available preset IDs: {[p.get('id') for p in presets]}")
+    
+    # Sort presets by created_at in descending order (newest first)
+    # First check if created_at exists, if not use id as fallback
+    if presets[0].get('created_at'):
+        sorted_presets = sorted(presets, key=lambda x: x.get('created_at', ''), reverse=True)
+    else:
+        # If no created_at field, assume the first preset is the latest
+        sorted_presets = presets
+    
+    latest_preset = sorted_presets[0]
+    print(f"Latest preset: {latest_preset}")
+    
+    # Ensure the preset has an id property
+    if not latest_preset.get('id') and not latest_preset.get('preset_id'):
+        print(f"Warning: Latest preset has no id or preset_id property: {latest_preset}")
+        return jsonify({"error": "Invalid preset data"}), 500
+    
+    return jsonify(latest_preset), 200
 
 @app.route('/webhook', methods=['POST'])
 def stripe_webhook():

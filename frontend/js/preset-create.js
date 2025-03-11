@@ -4,6 +4,121 @@
  */
 
 /**
+ * Shows the preset preview
+ * @param {string} presetId - ID of the preset
+ * @param {string} imageUrl - URL of the image
+ * @param {Object|string} presetData - Preset data (can be object or JSON string)
+ */
+function showPresetPreview(presetId, imageUrl, presetData) {
+    console.log('Showing preset metadata:', { presetId });
+    
+    // Show the metadata-display section
+    const metadataSection = document.getElementById('metadata-display');
+    if (metadataSection) {
+        metadataSection.style.display = 'block';
+    } else {
+        console.error('Metadata display section not found');
+        return;
+    }
+    
+    // Get elements
+    const metadataContainer = document.querySelector('.metadata-container');
+    const downloadButton = document.getElementById('download-button');
+    
+    if (!metadataContainer || !downloadButton) {
+        console.error("[Preset] Metadata elements not found:", {
+            container: !!metadataContainer,
+            button: !!downloadButton
+        });
+        return;
+    }
+    
+    // Store the preset ID in localStorage for the download button
+    localStorage.setItem('lastCreatedPresetId', presetId);
+    console.log('Stored preset ID in localStorage:', presetId);
+    
+    // Also store it on the window object for immediate access
+    window.lastCreatedPresetId = presetId;
+    console.log('Also stored preset ID on window object:', presetId);
+    
+    // Set the preset ID on the download button
+    downloadButton.setAttribute('data-preset-id', presetId);
+    console.log('Set preset ID on download button:', presetId);
+    
+    // Add a direct event listener to the download button
+    downloadButton.addEventListener('click', function(e) {
+        console.log('Download button clicked directly from preset-create.js');
+        e.preventDefault(); // Prevent any default action
+        
+        // Get the preset ID directly from the button's data attribute
+        const buttonPresetId = this.getAttribute('data-preset-id');
+        console.log('Preset ID from button data attribute:', buttonPresetId);
+        
+        if (!buttonPresetId) {
+            console.error('No preset ID found on download button');
+            alert('Error: No preset ID found on download button');
+            return;
+        }
+        
+        // Disable button and show loading state
+        this.disabled = true;
+        this.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Downloading...';
+        
+        // Make the download request
+        console.log(`Attempting to download preset with ID: ${buttonPresetId}`);
+        fetch(window.utils.getApiUrl(`/proxy/xmp-file/${buttonPresetId}`), {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${window.auth.getAuthToken()}`
+            }
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.blob();
+        })
+        .then(blob => {
+            // Create a download link
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = `preset_${buttonPresetId}.xmp`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            console.log('Preset downloaded successfully');
+        })
+        .catch(error => {
+            console.error('Error downloading preset:', error);
+            alert('Error downloading preset: ' + error.message);
+        })
+        .finally(() => {
+            // Reset button state
+            this.disabled = false;
+            this.innerHTML = 'Download Preset';
+        });
+    });
+    
+    // Parse preset data if it's a string
+    let parsedPresetData = presetData;
+    if (typeof presetData === 'string') {
+        try {
+            parsedPresetData = JSON.parse(presetData);
+            console.log('Parsed preset data:', parsedPresetData);
+        } catch (e) {
+            console.error('Error parsing preset data:', e);
+            alert('Error parsing preset data. Please try again.');
+            return;
+        }
+    }
+    
+    // Display the preset data
+    populateAdjustmentTabs(parsedPresetData);
+}
+
+/**
  * Populates an adjustment tab with data
  * @param {string} tabId - ID of the tab content element
  * @param {Object} adjustments - Adjustment data
@@ -718,15 +833,123 @@ function uploadAndProcessImage(file) {
     })
     .then(data => {
         console.log('Preset created successfully:', data);
+        console.log('FULL BACKEND RESPONSE:', JSON.stringify(data, null, 2));
+        console.log('Response properties:', Object.keys(data));
+        console.log('Has preset_id property:', data.hasOwnProperty('preset_id'));
+        console.log('Has id property:', data.hasOwnProperty('id'));
+        
+        // Log the actual preset ID values from the response
+        console.log('data.preset_id value:', data.preset_id);
+        console.log('data.id value:', data.id);
+        
+        // Log the current state of localStorage before we modify it
+        console.log('localStorage before update:', {
+            lastCreatedPresetId: localStorage.getItem('lastCreatedPresetId'),
+            currentPresetId: localStorage.getItem('currentPresetId'),
+            preset_id: localStorage.getItem('preset_id')
+        });
         
         // Reset upload flag to allow new uploads
         uploadInProgress = false;
         
-        // Populate the adjustment tabs with the real data
-        populateAdjustmentTabs(data);
+        // Show preset preview with data
+        // Handle both property naming conventions (id or preset_id)
+        const presetId = data.id || data.preset_id;
+        const imageUrl = data.image_url;
+        
+        if (presetId && imageUrl) {
+            console.log('Showing preset preview with data:', {
+                preset_id: presetId,
+                image_url: imageUrl,
+                preset_data_type: typeof data.preset_data
+            });
+            
+            // Store the preset ID using the global preset manager
+            if (window.presetManager) {
+                window.presetManager.setPresetId(presetId);
+                console.log('Stored preset ID using global preset manager:', presetId);
+            } else {
+                console.error('Global preset manager not found! Falling back to localStorage');
+                localStorage.setItem('lastCreatedPresetId', presetId);
+                console.log('Stored preset ID in localStorage (fallback):', presetId);
+            }
+            
+            // Also store in multiple localStorage keys for redundancy
+            localStorage.setItem('lastCreatedPresetId', presetId);
+            localStorage.setItem('currentPresetId', presetId);
+            localStorage.setItem('preset_id', presetId);
+            console.log('Stored preset ID in all localStorage keys:', presetId);
+            
+            // Also set it directly on the window object for immediate access
+            window.lastCreatedPresetId = presetId;
+            console.log('Also stored preset ID on window object:', presetId);
+            
+            // Add the preset ID to the URL
+            const url = new URL(window.location.href);
+            url.searchParams.set('preset_id', presetId);
+            window.history.replaceState({}, '', url);
+            console.log('Added preset ID to URL:', presetId);
+            
+            // Only update the download button on the index page (not dashboard or preview pages)
+            // Check if we're on the index page by looking for specific elements
+            const isIndexPage = document.querySelector('#upload-section') !== null;
+            
+            if (isIndexPage) {
+                const downloadButton = document.querySelector('#download-button');
+                if (downloadButton) {
+                    // Store the preset ID as a data attribute
+                    downloadButton.setAttribute('data-preset-id', presetId);
+                    console.log('Set preset ID directly on index page download button:', presetId);
+                } else {
+                    console.log('Download button not found on index page');
+                }
+            } else {
+                console.log('Not on index page, skipping download button update');
+            }
+            
+            // Verify storage was successful
+            console.log('VERIFICATION - After storing preset ID:');
+            console.log('  - window.presetManager value:', window.presetManager ? window.presetManager.getPresetId() : 'not available');
+            console.log('  - window.lastCreatedPresetId:', window.lastCreatedPresetId);
+            console.log('  - localStorage.lastCreatedPresetId:', localStorage.getItem('lastCreatedPresetId'));
+            console.log('  - localStorage.currentPresetId:', localStorage.getItem('currentPresetId'));
+            
+            // Add detailed logging before calling showPresetPreview
+            console.log('ABOUT TO CALL showPresetPreview with:', {
+                presetId: presetId,
+                imageUrl: imageUrl,
+                presetDataType: typeof data.preset_data
+            });
+            
+            // Call the showPresetPreview function
+            showPresetPreview(presetId, imageUrl, data.preset_data);
+            
+            // Verify after calling showPresetPreview
+            console.log('AFTER calling showPresetPreview - checking storage:');
+            console.log('localStorage.lastCreatedPresetId:', localStorage.getItem('lastCreatedPresetId'));
+            console.log('window.lastCreatedPresetId:', window.lastCreatedPresetId);
+            
+            // Check if download button exists and has preset ID
+            const downloadBtn = document.getElementById('download-button');
+            if (downloadBtn) {
+                console.log('Download button found, data-preset-id:', downloadBtn.getAttribute('data-preset-id'));
+            } else {
+                console.error('Download button not found after preset creation!');
+            }
+        } else {
+            console.error('Invalid response data:', data);
+            alert('An error occurred while creating the preset. Please try again.');
+        }
         
         // Show the download section
         const downloadSection = document.getElementById('download');
+        
+        // Set the preset ID on the index page download button (if it exists)
+        const indexDownloadButton = document.getElementById('download-button');
+        if (indexDownloadButton) {
+            indexDownloadButton.setAttribute('data-preset-id', presetId);
+            console.log('Set preset ID on index page download button:', presetId);
+        }
         if (downloadSection) {
             downloadSection.style.display = 'block';
         }
@@ -944,13 +1167,330 @@ function initializeCreatePresetButton() {
     }
 }
 
+/**
+ * Downloads a preset XMP file
+ * @param {string} presetId - ID of the preset to download
+ * @param {string} sessionId - Checkout session ID (if applicable)
+ */
+function downloadPreset(presetId, sessionId = '') {
+    console.log(`Downloading preset: ${presetId}, session: ${sessionId}`);
+    
+    // Add auth token to headers
+    const headers = {};
+    const authToken = localStorage.getItem('authToken');
+    if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
+    }
+    
+    // Download the preset
+    fetch(window.utils.getApiUrl(`/preset/${presetId}/download?session_id=${sessionId}`), {
+        method: 'GET',
+        headers: headers
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        // Check the content type to determine if it's a direct file or JSON with URL
+        const contentType = response.headers.get('content-type');
+        console.log(`Response content type: ${contentType}`);
+        
+        if (contentType && contentType.includes('application/json')) {
+            // It's JSON with a URL
+            return response.json().then(data => {
+                console.log(`Received JSON data:`, data);
+                
+                if (!data.xmp_url) {
+                    throw new Error('No XMP URL found in response');
+                }
+                
+                console.log(`Fetching XMP from URL: ${data.xmp_url}`);
+                
+                // For signed URLs, fetch the content instead of opening directly
+                return fetch(data.xmp_url)
+                    .then(response => {
+                        console.log(`XMP fetch response status: ${response.status}`);
+                        console.log(`XMP fetch response headers:`, response.headers);
+                        
+                        if (!response.ok) {
+                            throw new Error(`Failed to fetch XMP file: ${response.status}`);
+                        }
+                        return response.blob();
+                    })
+                    .then(blob => {
+                        console.log(`Received blob:`, blob);
+                        
+                        // Create download link for the blob
+                        const url = window.URL.createObjectURL(blob);
+                        console.log(`Created object URL: ${url}`);
+                        
+                        const a = document.createElement('a');
+                        a.style.display = 'none';
+                        a.href = url;
+                        a.download = `preset_${presetId}.xmp`;
+                        document.body.appendChild(a);
+                        
+                        console.log(`Triggering download click`);
+                        a.click();
+                        
+                        document.body.removeChild(a);
+                        window.URL.revokeObjectURL(url);
+                        
+                        return { success: true, method: 'url-to-blob' };
+                    })
+                    .catch(error => {
+                        console.error(`Error fetching XMP file:`, error);
+                        
+                        // Try direct download as fallback
+                        console.log(`Trying direct download as fallback`);
+                        const a = document.createElement('a');
+                        a.style.display = 'none';
+                        a.href = data.xmp_url;
+                        a.download = `preset_${presetId}.xmp`;
+                        a.target = '_blank'; // Open in new tab to avoid CORS issues
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        
+                        return { success: true, method: 'direct-url-fallback' };
+                    });
+            });
+        } else {
+            // It's a direct file download
+            console.log(`Handling direct file download`);
+            
+            return response.blob().then(blob => {
+                console.log(`Received direct blob:`, blob);
+                
+                // Create download link for the blob
+                const url = window.URL.createObjectURL(blob);
+                console.log(`Created object URL for direct download: ${url}`);
+                
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = `preset_${presetId}.xmp`;
+                document.body.appendChild(a);
+                
+                console.log(`Triggering direct download click`);
+                a.click();
+                
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+                
+                return { success: true, method: 'blob' };
+            });
+        }
+    })
+    .then(result => {
+        console.log(`Preset downloaded successfully via ${result.method}`);
+        // Success message in console only, no alert
+    })
+    .catch(error => {
+        console.error('Error downloading preset:', error);
+        alert('Error downloading preset. Please try again.');
+    });
+}
+
+/**
+ * Initializes the download link for presets
+ */
+function initializeDownloadLink() {
+    console.log('Initializing download link');
+    
+    // Look for download button with either ID
+    const downloadButton = document.getElementById('download-button');
+    
+    if (!downloadButton) {
+        console.log('Download button not found on this page');
+        return;
+    }
+    
+    console.log('Found download button:', downloadButton);
+    
+    // Get preset ID from various sources
+    let presetId = downloadButton.getAttribute('data-preset-id');
+    
+    // If no preset ID on button, try to get from URL parameter
+    if (!presetId) {
+        const urlParams = new URLSearchParams(window.location.search);
+        presetId = urlParams.get('preset_id');
+        console.log('Got preset ID from URL:', presetId);
+    }
+    
+    // If still no preset ID, try localStorage
+    if (!presetId) {
+        presetId = localStorage.getItem('lastCreatedPresetId');
+        console.log('Got preset ID from localStorage:', presetId);
+    }
+    
+    if (presetId) {
+        console.log(`Setting up download button with preset ID: ${presetId}`);
+        
+        // Set the preset ID as a data attribute
+        downloadButton.setAttribute('data-preset-id', presetId);
+        
+        // Add click event listener
+        downloadButton.addEventListener('click', function() {
+            console.log('Download button clicked');
+            
+            // Get the preset ID from the button's data attribute
+            const buttonPresetId = this.getAttribute('data-preset-id');
+            
+            if (!buttonPresetId) {
+                console.error('No preset ID found for download');
+                alert('No preset ID found. Please create a preset first.');
+                return;
+            }
+            
+            console.log(`Downloading preset with ID: ${buttonPresetId}`);
+            
+            // Disable the button and show loading state
+            this.disabled = true;
+            this.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Downloading...';
+            
+            // Call the download function
+            downloadPreset(buttonPresetId);
+            
+            // Re-enable the button after a delay
+            setTimeout(() => {
+                this.disabled = false;
+                this.innerHTML = '<i class="fas fa-download"></i> Download Preset';
+            }, 2000);
+        });
+        
+        console.log('Download button initialized successfully');
+    } else {
+        console.log('No preset ID available for download button');
+        
+        // Disable the button if no preset ID is available
+        downloadButton.disabled = true;
+        downloadButton.title = 'Create a preset first';
+    }
+}
+
 // Keep track of whether we've already initialized
 let hasInitialized = false;
 
 // Initialize the page when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-    // Only initialize if we're on the preset creation page
+    console.log('DOM loaded - checking page type');
+    
+    // Check if we're on the index page or the preset creation page
+    const isIndexPage = window.location.pathname === '/' || window.location.pathname.endsWith('/index.html');
     const isPresetCreationPage = document.getElementById('createPresetBtn') !== null;
+    
+    console.log('Page type detection:', { isIndexPage, isPresetCreationPage });
+    
+    // Only add download button handler if we're NOT on the index page
+    // This avoids conflicts with the index.html script
+    if (!isIndexPage && document.getElementById('download-button')) {
+        console.log('Found download button on non-index page - adding click handler');
+        
+        // Remove any existing listeners by cloning the button
+        const downloadButton = document.getElementById('download-button');
+        const newButton = downloadButton.cloneNode(true);
+        downloadButton.parentNode.replaceChild(newButton, downloadButton);
+        
+        // Add direct click handler
+        newButton.addEventListener('click', function() {
+            console.log('Download button clicked (direct handler)');
+            console.log('Button properties:', {
+                id: this.id,
+                className: this.className,
+                disabled: this.disabled,
+                innerHTML: this.innerHTML,
+                dataPresetId: this.getAttribute('data-preset-id')
+            });
+            
+            // First check window object (most immediate source)
+            let presetId = window.lastCreatedPresetId;
+            console.log('Got preset ID from window object:', presetId);
+            
+            // Then check localStorage (persistent storage)
+            if (!presetId) {
+                presetId = localStorage.getItem('lastCreatedPresetId');
+                console.log('Got preset ID from localStorage:', presetId);
+            }
+            
+            // If still no preset ID, try data attribute
+            if (!presetId) {
+                presetId = this.getAttribute('data-preset-id');
+                console.log('Got preset ID from data attribute:', presetId);
+            }
+            
+            // If still no preset ID, try URL parameter
+            if (!presetId) {
+                const urlParams = new URLSearchParams(window.location.search);
+                presetId = urlParams.get('preset_id');
+                console.log('Got preset ID from URL:', presetId);
+            }
+            
+            // Debug localStorage contents
+            console.log('All localStorage keys:', Object.keys(localStorage));
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                console.log(`localStorage[${key}] =`, localStorage.getItem(key));
+            }
+            
+            if (!presetId) {
+                console.error('No preset ID found for download');
+                alert('No preset ID found. Please create a preset first.');
+                return;
+            }
+            
+            console.log(`Downloading preset with ID: ${presetId}`);
+            
+            // Disable the button and show loading state
+            this.disabled = true;
+            this.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Downloading...';
+            
+            // Call the download function directly with fetch
+            fetch(window.utils.getApiUrl(`/api/presets/${presetId}/download`), {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+                }
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.blob();
+            })
+            .then(blob => {
+                console.log(`Received blob:`, blob);
+                
+                // Create download link for the blob
+                const url = window.URL.createObjectURL(blob);
+                console.log(`Created object URL: ${url}`);
+                
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = `preset_${presetId}.xmp`;
+                document.body.appendChild(a);
+                
+                console.log(`Triggering download click`);
+                a.click();
+                
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+                
+                console.log(`Preset downloaded successfully`);
+            })
+            .catch(error => {
+                console.error('Error downloading preset:', error);
+                alert('Error downloading preset. Please try again.');
+            })
+            .finally(() => {
+                // Re-enable the button
+                this.disabled = false;
+                this.innerHTML = '<i class="fas fa-download"></i> Download Preset';
+            });
+        });
+    }
     
     if (isPresetCreationPage && !hasInitialized) {
         console.log('Initializing preset creation page');
@@ -971,6 +1511,8 @@ if (document.getElementById('createPresetBtn') !== null) {
     }
     
     window.presetCreate = {
-        handleCreatePresetClick
+        handleCreatePresetClick,
+        downloadPreset,
+        initializeDownloadLink
     };
 }
