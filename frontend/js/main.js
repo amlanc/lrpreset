@@ -90,6 +90,27 @@ function initializeApp() {
                 .then(data => {
                     // Populate the adjustment tabs with the real data
                     populateAdjustmentTabs(data);
+                    
+                    // Stop the AI processing animation
+                    const uploadStatus = document.getElementById('upload-status');
+                    if (uploadStatus) {
+                        // Update the status text
+                        const statusText = document.getElementById('statusText');
+                        if (statusText) {
+                            statusText.textContent = 'Processing complete!';
+                        }
+                        
+                        // Mark all steps as complete
+                        const aiSteps = document.querySelectorAll('.ai-step');
+                        aiSteps.forEach(step => {
+                            step.classList.add('active');
+                        });
+                        
+                        // Hide the processing UI after a short delay
+                        setTimeout(() => {
+                            uploadStatus.style.display = 'none';
+                        }, 2000);
+                    }
                 })
                 .catch(error => {
                     console.error('Error analyzing image:', error);

@@ -781,6 +781,13 @@ function uploadAndProcessImage(file) {
     // Set flag to prevent duplicate uploads
     uploadInProgress = true;
     
+    // Clear any previous preset data to avoid conflicts
+    // This ensures we don't have stale data when creating a new preset
+    window.lastCreatedPresetId = null;
+    localStorage.removeItem('lastCreatedPresetId');
+    localStorage.removeItem('currentPresetId');
+    localStorage.removeItem('preset_id');
+    
     // Generate a unique request ID
     uploadRequestId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
     
@@ -956,13 +963,21 @@ function uploadAndProcessImage(file) {
         
         // Set the preset ID on the download button
         const downloadButton = document.getElementById('download-button');
-        if (downloadButton && data.preset_id) {
-            downloadButton.setAttribute('data-preset-id', data.preset_id);
-            console.log('Set preset ID on download button:', data.preset_id);
-            
-            // Add click event listener to the download button if not already added
-            if (!downloadButton.hasAttribute('data-listener-added')) {
-                downloadButton.addEventListener('click', async function() {
+        if (downloadButton) {
+            // Use either data.preset_id or presetId (which was already extracted earlier)
+            const buttonPresetId = data.preset_id || presetId;
+            if (buttonPresetId) {
+                // Always update the data attribute with the latest preset ID
+                downloadButton.setAttribute('data-preset-id', buttonPresetId);
+                console.log('Set preset ID on download button:', buttonPresetId);
+                
+                // Remove any existing event listeners by cloning the button
+                const newButton = downloadButton.cloneNode(true);
+                downloadButton.parentNode.replaceChild(newButton, downloadButton);
+                
+                // Add a fresh click event listener to the new button
+                newButton.setAttribute('data-listener-added', 'true');
+                newButton.addEventListener('click', async function() {
                     const presetId = this.getAttribute('data-preset-id');
                     if (presetId) {
                         try {

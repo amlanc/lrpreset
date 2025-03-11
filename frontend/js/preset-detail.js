@@ -174,9 +174,46 @@ async function loadPresetDetails(presetId) {
         // Update preset name
         const presetName = document.getElementById('preset-name');
         if (presetName) {
-            presetName.textContent = data.preset_id ? 
+            let displayName = data.name || '';
+            
+            // If we have a file_name in the [Photograph_Name]_[YYYY]_[MM]_[DD]_[HH]_[MM].xmp format
+            if (data.file_name) {
+                // Remove .xmp extension for display
+                const filenameWithoutExt = data.file_name.replace(/\.xmp$/i, '');
+                
+                // Parse the filename to extract photograph name and timestamp
+                // Format: [Photograph_Name]_[YYYY]_[MM]_[DD]_[HH]_[MM]
+                const parts = filenameWithoutExt.split('_');
+                
+                if (parts.length >= 6) {
+                    // Extract timestamp parts (last 5 elements)
+                    const timestampParts = parts.slice(-5);
+                    
+                    // Extract photograph name (everything before the timestamp)
+                    const photoNameParts = parts.slice(0, parts.length - 5);
+                    const photoName = photoNameParts.join('_').replace(/_/g, ' ');
+                    
+                    // Format the date: YYYY_MM_DD_HH_MM -> YYYY-MM-DD HH:MM
+                    const year = timestampParts[0];
+                    const month = timestampParts[1];
+                    const day = timestampParts[2];
+                    const hour = timestampParts[3];
+                    const minute = timestampParts[4];
+                    
+                    const formattedDate = `${year}-${month}-${day} ${hour}:${minute}`;
+                    
+                    // Create the final display name: Photograph Name (YYYY-MM-DD HH:MM)
+                    displayName = `${photoName} (${formattedDate})`;
+                } else {
+                    // Fallback if the filename doesn't match the expected format
+                    displayName = filenameWithoutExt.replace(/_/g, ' ');
+                }
+            }
+            
+            // Use the formatted display name or fall back to preset ID
+            presetName.textContent = displayName || (data.preset_id ? 
                 `Preset ${data.preset_id.slice(0, 8)}` : 
-                'Untitled Preset';
+                'Untitled Preset');
         }
         
         // Update preset image with robust error handling

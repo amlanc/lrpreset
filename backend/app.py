@@ -94,13 +94,12 @@ def require_auth(f):
     def decorated_function(*args, **kwargs):
         # Get the ID token from the Authorization header
         auth_header = request.headers.get('Authorization')
-        print(f"Auth header: {auth_header[:20] + '...' if auth_header and len(auth_header) > 20 else auth_header}")
+        # print(f"Auth header: {auth_header[:20] + '...' if auth_header and len(auth_header) > 20 else auth_header}")
         
         if not auth_header or not auth_header.startswith('Bearer '):
             return jsonify({'error': 'No authentication token provided'}), 401
             
         id_token = auth_header.split(' ')[1]
-        print(f"Token length: {len(id_token)}")
         
         try:
             # Use PyJWT to decode and verify the token
@@ -110,28 +109,28 @@ def require_auth(f):
             # For now, we're just decoding without verification
             # In production, you should verify the signature with Google's public keys
             token_parts = id_token.split('.')
-            print(f"Token parts: {len(token_parts)}")
+
             
             if len(token_parts) != 3:
                 raise ValueError('Invalid token format')
                 
             # Decode the token without verification for now
             payload = jwt.decode(id_token, options={"verify_signature": False})
-            print(f"Decoded payload: {payload.keys()}")
+
             
             # Check if token is expired
             current_time = int(time.time())
             if 'exp' in payload and current_time > payload['exp']:
-                print(f"Token expired: {payload['exp']} < {current_time}")
+                # Token expired
                 raise ValueError('Token expired')
                 
             # Add the user ID to the request
             request.user_id = payload.get('sub')
             if not request.user_id:
-                print("No user ID in token")
+                # No user ID in token
                 raise ValueError('No user ID in token')
                 
-            print(f"Authentication successful for user: {request.user_id}")
+            # Authentication successful
             return f(*args, **kwargs)
             
         except Exception as e:
@@ -146,9 +145,7 @@ def upload_image():
     """
     Handle image upload, process with LLM, and store the preset
     """
-    print("Upload endpoint called")
-    print("Request files:", request.files)
-    print("Request form:", request.form)
+    # Upload endpoint called
     
     try:
         # Get user ID from the authenticated request
@@ -156,53 +153,51 @@ def upload_image():
         
         # Check if the post request has the file part
         if 'image' not in request.files:
-            print("No image part in request")
+            # No image part in request
             return jsonify({'error': 'No image part'}), 400
         
         file = request.files['image']
-        print("File object:", file)
-        print("File name:", file.filename)
-        print("File content type:", file.content_type)
+        # File information
         
         # If user does not select file, browser also
         # submit an empty part without filename
         if file.filename == '':
-            print("No selected file")
+            # No selected file
             return jsonify({'error': 'No selected file'}), 400
         
         # Check if the file is allowed
         if not allowed_file(file.filename):
-            print("Invalid file type")
+            # Invalid file type
             return jsonify({'error': 'Invalid file type. Please upload a JPG, PNG or WebP image'}), 400
         
         # Generate a unique ID for this preset
         preset_id = str(uuid.uuid4())
-        print(f"Generated preset ID: {preset_id}")
+        # Generated preset ID
         
         # Read the image data directly from the uploaded file
         image_data = file.read()
-        print(f"Read {len(image_data)} bytes of image data")
+        # Read image data
         
         # Process the image with the LLM directly using the image data
-        print(f"Processing image with LLM")
+        # Processing image with LLM
         metadata = llm_handler.generate_preset_from_image(image_data)
         
         if not metadata:
             return jsonify({'error': 'Failed to process image with LLM'}), 500
         
-        print("Metadata extracted successfully:", metadata)
+        # Metadata extracted successfully
         
         # 2. Generate XMP file
-        print("Generating XMP file...")
+        # Generating XMP file
         xmp_content = xmp_generator.generate_xmp(metadata)
         
         if not xmp_content:
             return jsonify({'error': 'Failed to generate XMP file'}), 500
         
-        print("XMP generated successfully, length:", len(xmp_content))
+        # XMP generated successfully
         
         # 3. Store in Supabase
-        print("Storing in Supabase...")
+        # Storing in Supabase
         # The store_preset function now returns None if there's a database error
         # This helps prevent duplicate uploads by not proceeding with incomplete presets
         preset_id = supabase_client.store_preset(user_id, image_data, metadata, xmp_content, original_filename=file.filename)
@@ -228,7 +223,7 @@ def upload_image():
             'image_url': image_url,
             'preset_data': metadata
         }
-        print(f"Returning response: {response_data}")
+        # Returning response
         # Create response with CORS headers
         response = Response(
             json.dumps(response_data),
@@ -403,15 +398,14 @@ def get_presets():
 @require_auth
 def get_latest_preset():
     """Get the most recent preset for the authenticated user"""
-    print(f"Getting latest preset for authenticated user: {request.user_id}")
+    # Getting latest preset for authenticated user
     presets = supabase_client.get_user_presets(request.user_id)
     
     if not presets or len(presets) == 0:
-        print(f"No presets found for user: {request.user_id}")
+        # No presets found for user
         return jsonify({"error": "No presets found for user"}), 404
     
-    print(f"Found {len(presets)} presets for user: {request.user_id}")
-    print(f"Available preset IDs: {[p.get('id') for p in presets]}")
+    # Found presets for user
     
     # Sort presets by created_at in descending order (newest first)
     # First check if created_at exists, if not use id as fallback
@@ -422,11 +416,11 @@ def get_latest_preset():
         sorted_presets = presets
     
     latest_preset = sorted_presets[0]
-    print(f"Latest preset: {latest_preset}")
+    # Latest preset identified
     
     # Ensure the preset has an id property
     if not latest_preset.get('id') and not latest_preset.get('preset_id'):
-        print(f"Warning: Latest preset has no id or preset_id property: {latest_preset}")
+        # Warning: Latest preset has no id or preset_id property
         return jsonify({"error": "Invalid preset data"}), 500
     
     return jsonify(latest_preset), 200
@@ -522,7 +516,10 @@ def preset_endpoint(preset_id):
         response = {
             'preset_id': preset_id,
             'image_url': image_url,
-            'preset_data': preset_data
+            'preset_data': preset_data,
+            'file_name': preset.get('file_name', ''),
+            'name': preset_data.get('name', ''),
+            'created_at': preset.get('created_at', '')
         }
         
         return jsonify(response), 200
@@ -973,7 +970,19 @@ def create_preset():
         preset_name = request.form.get('name')
         if not preset_name:
             preset_name = os.path.splitext(xmp_file.filename)[0]
-        print(f"Preset name: {preset_name}")
+        
+        # Format the filename with timestamp
+        current_time = datetime.datetime.now()
+        timestamp = current_time.strftime("%Y_%m_%d_%H_%M")
+        
+        # Replace spaces with underscores in the preset name
+        formatted_preset_name = preset_name.replace(' ', '_')
+        
+        # Create the final filename format: [Photograph_Name]_[YYYY]_[MM]_[DD]_[HH]_[MM].xmp
+        formatted_filename = f"{formatted_preset_name}_{timestamp}.xmp"
+        
+        print(f"Original preset name: {preset_name}")
+        print(f"Formatted filename: {formatted_filename}")
 
         # Store in Supabase
         try:
@@ -983,7 +992,7 @@ def create_preset():
                 'created_at': datetime.datetime.utcnow().isoformat(),
                 'file_size': len(xmp_content),
                 'has_image': image_data is not None,
-                'file_name': xmp_file.filename,
+                'file_name': formatted_filename,  # Use our new formatted filename
                 'created_by': user_id,
                 'type': 'xmp',
                 'status': 'active'

@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="styles/style.css">
     <link rel="stylesheet" href="styles/preset-parameters.css">
     <link rel="stylesheet" href="styles/dashboard.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Libre+Baskerville:wght@400;700&display=swap">
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; 
         connect-src 'self' https://accounts.google.com https://*.googleapis.com http://localhost:8000 https://pic2preset.com https://pic2preset.online; 
         script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.gstatic.com https://accounts.google.com https://cdn.jsdelivr.net https://apis.google.com https://pic2preset.com https://pic2preset.online; 
@@ -42,13 +43,18 @@
                         <p>Manage and organize your Lightroom presets</p>
                     </div>
                     
-                    <table class="dashboard-table" id="presets-table">
-                        <colgroup>
-                            <col class="preview-col">
-                            <col class="name-col">
-                            <col class="created-col">
-                            <col class="actions-col">
-                        </colgroup>
+                    <div class="view-controls">
+                        <div class="view-toggle">
+                            <button id="table-view-btn" class="view-btn" title="Table View">
+                                <i class="fas fa-list"></i>
+                            </button>
+                            <button id="grid-view-btn" class="view-btn active" title="Grid View">
+                                <i class="fas fa-th"></i>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <table class="dashboard-table" id="presets-table" style="display: none;">
                         <thead>
                             <tr>
                                 <th>Preview</th>
@@ -66,6 +72,24 @@
                         <i class="fas fa-images"></i>
                         <h2>No presets yet</h2>
                         <p>Upload your first Lightroom preset to get started</p>
+                    </div>
+                    
+                    <!-- Grid View Container -->
+                    <div id="grid-view" class="preset-grid">
+                        <!-- Grid items will be added here by JavaScript -->
+                    </div>
+                    
+                    <!-- Pagination Controls -->
+                    <div class="pagination-controls" id="pagination-controls" style="display: none;">
+                        <button id="prev-page" class="pagination-btn" disabled>
+                            <i class="fas fa-chevron-left"></i> Previous
+                        </button>
+                        <div class="pagination-info">
+                            <span id="current-page">1</span> of <span id="total-pages">1</span>
+                        </div>
+                        <button id="next-page" class="pagination-btn" disabled>
+                            Next <i class="fas fa-chevron-right"></i>
+                        </button>
                     </div>
                 </div>
                 
