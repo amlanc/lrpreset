@@ -86,7 +86,7 @@ function downloadPreset(presetId, sessionId) {
     }
     
     // Construct URL with session ID if provided
-    let url = window.utils.getApiUrl(`/preset/${presetId}/download`);
+    let url = window.utils.getApiUrl(`/api/presets/${presetId}/download`);
     if (sessionId) {
         url += `?session_id=${sessionId}`;
     }
