@@ -88,11 +88,17 @@ def is_admin_user(email):
         if not supabase:
             print("Failed to get Supabase client")
             return False
-            
-        # Check admin_users table
-        response = supabase.table('admin_users').select('*').eq('email', email.lower()).execute()
-        if response.data and len(response.data) > 0:
-            return True
+        
+        try:    
+            # Check admin_users table
+            response = supabase.table('admin_users').select('*').eq('email', email.lower()).execute()
+            if response.data and len(response.data) > 0:
+                return True
+        except Exception as table_error:
+            # If the table doesn't exist, log the error but continue
+            print(f"Warning: Could not check admin_users table: {table_error}")
+            # Since we already checked for the known admin emails above, we can return False here
+            pass
             
         return False
     except Exception as e:

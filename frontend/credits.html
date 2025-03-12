@@ -6,26 +6,36 @@
     <title>Purchase Credits - LR Preset</title>
     <link rel="stylesheet" href="styles/style.css">
     <link rel="stylesheet" href="styles/credits.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" integrity="sha512-9usAa10IRO0HhonpyAIVpjrylPvoDwiPUiKdWk5t3PyolY1cOd4DSE0Ga+ri4AuTroPR5aQvXU9xC6qOPnzFeg==" crossorigin="anonymous" referrerpolicy="no-referrer" />
 </head>
 <body>
-    <div class="container">
-        <nav class="navbar">
-            <div class="navbar-left">
-                <a href="index.html" class="logo">LR Preset</a>
+    <header>
+        <nav>
+            <div class="logo">
+                <a href="index.html">LR Preset</a>
             </div>
-            <div class="navbar-right">
-                <div id="credit-display" class="credit-display">
-                    <span class="credit-icon">💎</span>
-                    <span class="credit-balance">Loading...</span>
+            <div class="nav-links">
+                <a href="index.html">Home</a>
+                <a href="dashboard.html">Dashboard</a>
+                <a href="credits.html" class="active">Credits</a>
+            </div>
+            <div id="auth-section">
+                <div class="user-info" onclick="toggleUserDropdown()">
+                    <img id="user-avatar" src="images/default-avatar.png" alt="User Avatar" class="profile-image">
+                    <span id="user-name">Life On Ganemede</span>
+                    <i class="fas fa-caret-down"></i>
                 </div>
-                <div class="user-info">
-                    <img id="user-avatar" src="images/default-avatar.png" alt="User Avatar">
-                    <span id="user-name">Guest</span>
+                <div id="user-dropdown" class="dropdown-content">
+                    <a href="dashboard.html">Dashboard</a>
+                    <a href="credits.html">Credits</a>
+                    <a href="#" onclick="window.auth.signOut(); return false;">Sign Out</a>
                 </div>
             </div>
         </nav>
+    </header>
 
-        <div class="content">
+    <main>
+        <section id="credits">
             <div class="credits-container">
                 <h1>Purchase Credits</h1>
                 
@@ -99,16 +109,38 @@
                     </div>
                 </div>
             </div>
-        </div>
-        
-        <footer>
+        </section>
+    </main>
+    
+    <footer>
+        <div class="footer-content">
             <p>&copy; 2025 LR Preset. All rights reserved.</p>
-        </footer>
-    </div>
+        </div>
+    </footer>
 
+    <script src="js/utils.js"></script>
+    <script src="js/auth.js"></script>
     <script src="js/main.js"></script>
     <script src="js/credits.js"></script>
     <script>
+        // Toggle user dropdown menu
+        function toggleUserDropdown() {
+            document.getElementById('user-dropdown').classList.toggle('show');
+        }
+        
+        // Close dropdown when clicking outside
+        window.addEventListener('click', function(event) {
+            if (!event.target.matches('.user-info') && !event.target.matches('.user-info *')) {
+                const dropdowns = document.getElementsByClassName('dropdown-content');
+                for (let i = 0; i < dropdowns.length; i++) {
+                    const openDropdown = dropdowns[i];
+                    if (openDropdown.classList.contains('show')) {
+                        openDropdown.classList.remove('show');
+                    }
+                }
+            }
+        });
+        
         document.addEventListener('DOMContentLoaded', function() {
             // Initialize user info
             initializeUserInfo();

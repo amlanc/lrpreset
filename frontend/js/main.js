@@ -12,11 +12,16 @@
 function initializeApp() {
     console.log('Initializing application...');
     
-    // Check for authentication response in URL
-    const authResponseHandled = window.auth.checkUrlForAuthResponse();
+    // Check for authentication response in URL if auth module is available
+    let authResponseHandled = false;
+    if (window.auth && window.auth.checkUrlForAuthResponse) {
+        authResponseHandled = window.auth.checkUrlForAuthResponse();
+    }
     
-    // Initialize authentication
-    window.auth.startGoogleAuth();
+    // Initialize authentication if auth module is available
+    if (window.auth && window.auth.startGoogleAuth) {
+        window.auth.startGoogleAuth();
+    }
     
     // Wait for auth to be ready before initializing features
     const initializeFeatures = () => {
@@ -188,15 +193,36 @@ function initializeUserInfo() {
     const userAvatar = document.getElementById('user-avatar');
     
     if (userName && userAvatar) {
-        if (window.auth && window.auth.isAuthenticated()) {
-            // Get user info from localStorage
-            const userDisplayName = localStorage.getItem('user_display_name') || 'User';
-            const userPicture = localStorage.getItem('user_picture') || 'images/default-avatar.png';
-            
-            // Update the UI
-            userName.textContent = userDisplayName;
-            userAvatar.src = userPicture;
-            userAvatar.alt = userDisplayName;
+        // Check if user is authenticated by checking for authToken
+        const authToken = localStorage.getItem('authToken');
+        
+        if (authToken) {
+            try {
+                // Decode JWT token to get user info
+                const payload = JSON.parse(atob(authToken.split('.')[1]));
+                console.log('User info from token:', payload);
+                
+                // Get user display name from token or localStorage
+                const userDisplayName = payload.name || localStorage.getItem('userDisplayName') || 'User';
+                
+                // Get user picture from token or localStorage
+                const userPicture = payload.picture || localStorage.getItem('userPicture') || 'images/default-avatar.png';
+                
+                // Update the UI
+                userName.textContent = userDisplayName;
+                userAvatar.src = userPicture;
+                userAvatar.alt = userDisplayName;
+                
+                // Store user info in localStorage for future use
+                if (payload.name) localStorage.setItem('userDisplayName', payload.name);
+                if (payload.picture) localStorage.setItem('userPicture', payload.picture);
+            } catch (error) {
+                console.error('Error decoding token:', error);
+                // Default values if token decoding fails
+                userName.textContent = 'User';
+                userAvatar.src = 'images/default-avatar.png';
+                userAvatar.alt = 'User';
+            }
         } else {
             // Default values for guest users
             userName.textContent = 'Guest';

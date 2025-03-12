@@ -1499,6 +1499,12 @@ def get_user_credit_balance():
         # Get the user's credit balance
         user_credits = credit_system.get_user_credits(user_id)
         
+        # If user has no credits, add the default credits for new users
+        if user_credits and user_credits.get('credits_balance', 0) == 0:
+            credit_system.add_credits_for_new_user(user_id, user_email)
+            # Get updated credits
+            user_credits = credit_system.get_user_credits(user_id)
+        
         return jsonify({
             'credits': {
                 'balance': user_credits.get('credits_balance', 0) if user_credits else 0,
@@ -1509,6 +1515,42 @@ def get_user_credit_balance():
         })
     except Exception as e:
         print(f"Error getting credit balance: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/credits/add', methods=['GET'])
+def add_user_credits():
+    """Add credits for a specific user (development/testing only)"""
+    try:
+        # Get user ID from request
+        user_id = request.args.get('user_id')
+        user_email = request.args.get('email')
+        
+        if not user_id:
+            return jsonify({'error': 'User ID is required'}), 400
+            
+        # Add credits for the user
+        success = credit_system.add_credits_for_new_user(user_id, user_email)
+        
+        if success:
+            # Get updated credits
+            user_credits = credit_system.get_user_credits(user_id)
+            
+            return jsonify({
+                'success': True,
+                'message': 'Credits added successfully',
+                'credits': {
+                    'balance': user_credits.get('credits_balance', 0) if user_credits else 0,
+                    'total_earned': user_credits.get('total_credits_earned', 0) if user_credits else 0,
+                    'last_update': user_credits.get('last_credit_update', '') if user_credits else ''
+                }
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'Failed to add credits'
+            }), 500
+    except Exception as e:
+        print(f"Error adding credits: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/credits/purchase', methods=['POST'])

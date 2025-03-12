@@ -48,32 +48,103 @@ function initCreditSystem() {
  * Fetch the user's credit balance from the server
  */
 function fetchCreditBalance() {
-    const userId = localStorage.getItem('user_id');
-    const userEmail = localStorage.getItem('user_email');
+    // Get userId from localStorage - it's stored as 'userId' not 'user_id'
+    const userId = localStorage.getItem('userId');
+    // Get user email from localStorage or token
+    let userEmail = localStorage.getItem('userEmail');
+    
+    // If we don't have the email in localStorage, try to get it from the token
+    if (!userEmail && localStorage.getItem('authToken')) {
+        try {
+            const token = localStorage.getItem('authToken');
+            const payload = JSON.parse(atob(token.split('.')[1]));
+            userEmail = payload.email;
+            // Store it for future use
+            if (userEmail) localStorage.setItem('userEmail', userEmail);
+        } catch (error) {
+            console.error('Error extracting email from token:', error);
+        }
+    }
     
     if (!userId) {
         console.error('User ID not found in localStorage');
+        // Try to get user info from the auth module if available
+        if (window.auth && window.auth.getUserId) {
+            const authUserId = window.auth.getUserId();
+            if (authUserId) {
+                console.log('Retrieved user ID from auth module:', authUserId);
+                // Continue with the fetched user ID
+                fetchCreditsWithUserId(authUserId, userEmail);
+                return;
+            }
+        }
+        // If we still don't have a user ID, show a message
+        updateCreditDisplay('0', false);
         return;
     }
     
-    fetch(`/api/credits?user_id=${userId}&email=${userEmail || ''}`)
+    // If we have a user ID, fetch credits
+    fetchCreditsWithUserId(userId, userEmail);
+    
+}
+
+/**
+ * Fetch credits with a specific user ID
+ */
+function fetchCreditsWithUserId(userId, userEmail) {
+    // Use the API URL utility function if available
+    const apiUrl = window.getApiUrl ? getApiUrl(`/api/credits`) : `/api/credits`;
+    
+    // Get the auth token from localStorage
+    const authToken = localStorage.getItem('authToken');
+    if (!authToken) {
+        console.error('No auth token found in localStorage');
+        updateCreditDisplay('Error');
+        return;
+    }
+    
+    // Log the request for debugging
+    console.log(`Fetching credits for user ID: ${userId}, email: ${userEmail || 'not provided'}`);
+    
+    // Set up request headers with authorization token
+    const headers = {
+        'Authorization': `Bearer ${authToken}`,
+        'Content-Type': 'application/json'
+    };
+    
+    fetch(`${apiUrl}?user_id=${userId}&email=${userEmail || ''}`, {
+        method: 'GET',
+        headers: headers
+    })
         .then(response => {
             if (!response.ok) {
-                throw new Error('Failed to fetch credit balance');
+                throw new Error(`Failed to fetch credit balance: ${response.status} ${response.statusText}`);
             }
             return response.json();
         })
         .then(data => {
+            console.log('Credit data received:', data);
+            
             // Update the stored credit information
             userCredits = {
                 balance: data.credits.balance,
-                isTestAccount: data.credits.is_test_account,
-                totalEarned: data.credits.total_earned,
-                lastUpdate: data.credits.last_update
+                isTestAccount: data.credits.is_test_account || false,
+                isAdmin: data.credits.is_admin || false,
+                totalEarned: data.credits.total_earned || 0,
+                lastUpdate: data.credits.last_update || new Date().toISOString()
             };
+            
+            // Ensure non-admin users have at least 1 complimentary credit
+            if (!userCredits.isAdmin && !userCredits.isTestAccount && userCredits.balance < 1) {
+                userCredits.balance = 1; // Set complimentary credit
+                console.log('Setting complimentary credit for non-admin user');
+            }
             
             // Update the credit display in the navbar
             updateCreditDisplay();
+            
+            // Also update the balance display on the credits page if it exists
+            updateCreditsPageDisplay();
         })
         .catch(error => {
             console.error('Error fetching credit balance:', error);
@@ -93,8 +164,27 @@ function updateCreditDisplay(customText) {
             creditBalance.textContent = customText;
         } else if (userCredits.isTestAccount) {
             creditBalance.textContent = 'Unlimited';
+        } else if (userCredits.isAdmin) {
+            creditBalance.textContent = 'Admin';
         } else {
             creditBalance.textContent = userCredits.balance;
+        }
+    }
+}
+
+/**
+ * Update the balance display on the credits page
+ */
+function updateCreditsPageDisplay() {
+    // Update the balance display on the credits page if it exists
+    const balanceElement = document.getElementById('current-balance');
+    if (balanceElement) {
+        if (userCredits.isTestAccount) {
+            balanceElement.textContent = 'Unlimited';
+        } else if (userCredits.isAdmin) {
+            balanceElement.textContent = 'Admin';
+        } else {
+            balanceElement.textContent = userCredits.balance;
         }
     }
 }
@@ -213,6 +303,24 @@ function showNeedMoreCreditsModal(onPurchase) {
 }
 
 /**
+ * Toggle the user dropdown menu
+ */
+function toggleUserDropdown() {
+    const dropdown = document.getElementById('user-dropdown');
+    dropdown.classList.toggle('show');
+    
+    // Close the dropdown when clicking outside of it
+    document.addEventListener('click', function(event) {
+        const userDropdown = document.getElementById('user-dropdown');
+        const userProfile = document.querySelector('.user-profile');
+        
+        if (!userProfile.contains(event.target) && userDropdown.classList.contains('show')) {
+            userDropdown.classList.remove('show');
+        }
+    }, { once: true });
+}
+
+/**
  * Initialize the credits purchase page
  * This should be called on the credits.html page
  */
@@ -249,7 +357,15 @@ function initCreditsPurchasePage() {
             if (userCredits.isTestAccount) {
                 currentBalanceDisplay.textContent = 'Unlimited';
                 clearInterval(updateBalanceInterval);
-            } else if (userCredits.balance !== 0 || userCredits.balance === 0) {
+            } else if (userCredits.isAdmin) {
+                currentBalanceDisplay.textContent = 'Admin';
+                clearInterval(updateBalanceInterval);
+            } else if (userCredits.balance !== undefined) {
+                // Ensure non-admin users have at least 1 complimentary credit
+                if (userCredits.balance < 1) {
+                    userCredits.balance = 1;
+                    console.log('Setting complimentary credit for display');
+                }
                 currentBalanceDisplay.textContent = userCredits.balance;
                 clearInterval(updateBalanceInterval);
             }
