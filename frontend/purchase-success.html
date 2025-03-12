@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Purchase Successful - LR Preset</title>
+    <link rel="stylesheet" href="styles/style.css">
+    <link rel="stylesheet" href="styles/credits.css">
+</head>
+<body>
+    <div class="container">
+        <nav class="navbar">
+            <div class="navbar-left">
+                <a href="index.html" class="logo">LR Preset</a>
+            </div>
+            <div class="navbar-right">
+                <div id="credit-display" class="credit-display">
+                    <span class="credit-icon">💎</span>
+                    <span class="credit-balance">Loading...</span>
+                </div>
+                <div class="user-info">
+                    <img id="user-avatar" src="images/default-avatar.png" alt="User Avatar">
+                    <span id="user-name">Guest</span>
+                </div>
+            </div>
+        </nav>
+
+        <div class="content">
+            <div class="success-container">
+                <div id="purchase-result">
+                    <div class="loading-message">
+                        <h2>Verifying Purchase...</h2>
+                        <div class="spinner"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <footer>
+            <p>&copy; 2025 LR Preset. All rights reserved.</p>
+        </footer>
+    </div>
+
+    <script src="js/main.js"></script>
+    <script src="js/credits.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize user info
+            initializeUserInfo();
+            
+            // Initialize the credit system
+            if (window.creditSystem) {
+                window.creditSystem.initCreditSystem();
+                
+                // Verify the purchase
+                window.creditSystem.verifyPurchase();
+            }
+        });
+    </script>
+</body>
+</html>

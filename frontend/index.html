@@ -227,6 +227,7 @@
             }
         });
     </script>
+    <script src="js/utils.js"></script>
     <script src="js/preset-create.js"></script>
     <script src="js/main.js"></script>
     
@@ -258,12 +259,20 @@
             
             // Make the download request with correct API path
             console.log(`Downloading preset with ID: ${presetId}`);
-            const downloadUrl = window.utils.getApiUrl(`/api/presets/${presetId}/download`);
+            // Get auth token directly from localStorage
+            const authToken = localStorage.getItem('authToken');
+            if (!authToken) {
+                console.error('No auth token found, redirecting to login');
+                window.location.href = '/login.html';
+                return;
+            }
+            // Use the API URL without query parameters
+            const downloadUrl = getApiUrl(`/api/presets/${presetId}/download`);
             
             fetch(downloadUrl, {
                 method: 'GET',
                 headers: {
-                    'Authorization': `Bearer ${window.auth ? window.auth.getAuthToken() : localStorage.getItem('authToken')}`
+                    'Authorization': `Bearer ${authToken}`
                 }
             })
             .then(response => {
@@ -361,7 +370,7 @@
                     console.log('Download button clicked');
                     
                     // Always fetch the latest preset from the server
-                    const latestPresetUrl = window.utils.getApiUrl('/api/presets/latest');
+                    const latestPresetUrl = getApiUrl('/api/presets/latest');
                     
                     // Disable button while fetching
                     this.disabled = true;

@@ -1,0 +1,250 @@
+/* Credits system styling */
+
+/* Credit display in navbar */
+.credit-display {
+    display: flex;
+    align-items: center;
+    margin-right: 20px;
+    padding: 5px 10px;
+    background-color: rgba(255, 255, 255, 0.1);
+    border-radius: 20px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.credit-display:hover {
+    background-color: rgba(255, 255, 255, 0.2);
+}
+
+.credit-icon {
+    margin-right: 5px;
+    font-size: 16px;
+}
+
+.credit-balance {
+    font-weight: bold;
+}
+
+/* Credits page styling */
+.credits-container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.credit-info {
+    margin-bottom: 40px;
+    text-align: center;
+}
+
+.balance-display {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 20px;
+    font-size: 24px;
+}
+
+.credit-icon.large {
+    font-size: 32px;
+    margin-right: 10px;
+}
+
+.credit-balance.large {
+    font-size: 32px;
+    font-weight: bold;
+}
+
+.purchase-container {
+    background-color: #f5f5f5;
+    border-radius: 8px;
+    padding: 30px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: bold;
+}
+
+.form-group select {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 16px;
+}
+
+.price-display {
+    font-size: 24px;
+    font-weight: bold;
+    color: #2a9d8f;
+}
+
+.eula-container {
+    display: flex;
+    align-items: flex-start;
+}
+
+.eula-container input {
+    margin-top: 4px;
+    margin-right: 10px;
+}
+
+.error-container {
+    background-color: #ffdddd;
+    color: #d32f2f;
+    padding: 10px;
+    border-radius: 4px;
+    margin-bottom: 20px;
+    display: none;
+}
+
+/* EULA Modal */
+.eula-modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+}
+
+.eula-modal-content {
+    background-color: #fff;
+    margin: 10% auto;
+    padding: 30px;
+    border-radius: 8px;
+    width: 70%;
+    max-width: 800px;
+    max-height: 80vh;
+    overflow-y: auto;
+    position: relative;
+}
+
+.eula-text {
+    margin-bottom: 30px;
+    max-height: 50vh;
+    overflow-y: auto;
+    padding: 15px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.close {
+    position: absolute;
+    top: 15px;
+    right: 20px;
+    font-size: 28px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+/* Success page */
+.success-container {
+    max-width: 600px;
+    margin: 50px auto;
+    text-align: center;
+    padding: 30px;
+    background-color: #f5f5f5;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.success-message h2 {
+    color: #2a9d8f;
+    margin-bottom: 20px;
+}
+
+.error-message h2 {
+    color: #d32f2f;
+    margin-bottom: 20px;
+}
+
+.loading-message {
+    text-align: center;
+    padding: 30px;
+}
+
+.spinner {
+    border: 4px solid rgba(0, 0, 0, 0.1);
+    border-radius: 50%;
+    border-top: 4px solid #2a9d8f;
+    width: 40px;
+    height: 40px;
+    animation: spin 1s linear infinite;
+    margin: 20px auto;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Test account message */
+.test-account-message {
+    text-align: center;
+    padding: 20px;
+}
+
+.test-account-message h2 {
+    color: #2a9d8f;
+    margin-bottom: 20px;
+}
+
+/* Need credits modal */
+#need-credits-modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+}
+
+#need-credits-modal .modal-content {
+    background-color: #fff;
+    margin: 15% auto;
+    padding: 30px;
+    border-radius: 8px;
+    width: 70%;
+    max-width: 500px;
+    position: relative;
+    text-align: center;
+}
+
+.modal-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+    margin-top: 20px;
+}
+
+/* Responsive styles */
+@media (max-width: 768px) {
+    .eula-modal-content {
+        width: 90%;
+        margin: 5% auto;
+    }
+    
+    .purchase-container {
+        padding: 20px;
+    }
+    
+    .balance-display {
+        font-size: 20px;
+    }
+    
+    .credit-icon.large, .credit-balance.large {
+        font-size: 24px;
+    }
+}

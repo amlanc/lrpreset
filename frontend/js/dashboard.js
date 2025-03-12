@@ -85,7 +85,7 @@ async function loadUserPresets() {
             throw new Error('No authentication token available');
         }
 
-        const apiUrl = window.utils.getApiUrl('/api/presets/user');
+        const apiUrl = getApiUrl('/api/presets/user');
         console.log('Fetching presets from:', apiUrl);
 
         const response = await fetch(apiUrl, {
@@ -402,14 +402,14 @@ function displayPresetsTable(presets) {
                 }
                 
                 // Get user ID for user-specific caching
-                const userId = window.auth.getUserId();
+                const userId = localStorage.getItem('userId') || (window.auth && window.auth.getUserId ? window.auth.getUserId() : 'anonymous');
 
                 
                 // Create cache key that includes the user ID
                 const cacheKey = `${userId}:${cleanImageUrl}`;
                 
                 // Create the proxy URL directly without caching for now to debug
-                const proxyUrl = window.utils.getApiUrl('/proxy/image') + 
+                const proxyUrl = getApiUrl('/proxy/image') + 
                     '?url=' + encodeURIComponent(cleanImageUrl) + 
                     '&user_id=' + encodeURIComponent(userId);
                 
@@ -560,7 +560,7 @@ function displayPresetsTable(presets) {
                         downloadPreset(preset.preset_id);
                     } else {
                         console.error('Cannot download preset: preset_id is undefined');
-                        window.utils.createNotification('Error: Cannot download preset', 'error', 3000);
+                        alert('Error: Cannot download preset');
                     }
                 }
             },
@@ -609,10 +609,22 @@ function displayPresetsTable(presets) {
  */
 async function downloadPreset(presetId) {
     try {
-        const response = await fetch(window.utils.getApiUrl(`/api/presets/${presetId}/download`), {
+        // Get the auth token directly from localStorage
+        const authToken = localStorage.getItem('authToken');
+        if (!authToken) {
+            console.error('No auth token found, redirecting to login');
+            window.location.href = '/login.html';
+            return;
+        }
+        
+        // Make the download request
+        const downloadUrl = getApiUrl(`/api/presets/${presetId}/download`);
+        console.log('Download URL:', downloadUrl);
+        
+        const response = await fetch(downloadUrl, {
             method: 'GET',
             headers: {
-                'Authorization': `Bearer ${window.auth.getAuthToken()}`
+                'Authorization': `Bearer ${authToken}`
             }
         });
 
@@ -874,8 +886,8 @@ function displayPresetsGrid(presets) {
                     }
                 }
                 
-                const userId = window.auth.getUserId();
-                const proxyUrl = window.utils.getApiUrl('/proxy/image') + 
+                const userId = localStorage.getItem('userId') || (window.auth && window.auth.getUserId ? window.auth.getUserId() : 'anonymous');
+                const proxyUrl = getApiUrl('/proxy/image') + 
                     '?url=' + encodeURIComponent(cleanImageUrl) + 
                     '&user_id=' + encodeURIComponent(userId);
                 
@@ -982,7 +994,7 @@ function displayPresetsGrid(presets) {
                 downloadPreset(presetId);
             } else {
                 console.error('Cannot download preset: preset_id is undefined');
-                window.utils.createNotification('Error: Cannot download preset', 'error', 3000);
+                alert('Error: Cannot download preset');
             }
         };
         actionsContainer.appendChild(downloadBtn);
@@ -1018,10 +1030,10 @@ function displayPresetsGrid(presets) {
 
 async function deletePreset(presetId) {
     try {
-        const response = await fetch(window.utils.getApiUrl(`/api/presets/${presetId}`), {
+        const response = await fetch(getApiUrl(`/api/presets/${presetId}`), {
             method: 'DELETE',
             headers: {
-                'Authorization': `Bearer ${window.auth.getAuthToken()}`
+                'Authorization': `Bearer ${localStorage.getItem('authToken') || (window.auth && window.auth.getAuthToken ? window.auth.getAuthToken() : '')}`
             }
         });
 

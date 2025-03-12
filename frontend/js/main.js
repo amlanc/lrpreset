@@ -32,6 +32,11 @@ function initializeApp() {
             window.upload.checkForLastUpload();
         }
         
+        // Initialize credit system if available
+        if (window.creditSystem && window.creditSystem.initCreditSystem) {
+            window.creditSystem.initCreditSystem();
+        }
+        
         // Initialize create preset button
         const createPresetBtn = document.getElementById('createPresetBtn');
         if (createPresetBtn) {
@@ -47,6 +52,21 @@ function initializeApp() {
                 if (!imageUpload || !imageUpload.files || imageUpload.files.length === 0) {
                     alert('Please upload an image first');
                     return;
+                }
+                
+                // Check if user has enough credits
+                if (window.creditSystem && window.creditSystem.hasEnoughCredits) {
+                    const hasCredits = window.creditSystem.hasEnoughCredits(1);
+                    if (!hasCredits) {
+                        // Show the need more credits modal
+                        if (window.creditSystem.showNeedMoreCreditsModal) {
+                            window.creditSystem.showNeedMoreCreditsModal();
+                            return;
+                        } else {
+                            alert('You need at least 1 credit to create a preset. Please purchase more credits.');
+                            return;
+                        }
+                    }
                 }
                 
                 // Show the metadata display section
@@ -157,6 +177,33 @@ function initializeApp() {
     
     // Add event listeners for global elements
     addGlobalEventListeners();
+}
+
+/**
+ * Initialize user information in the UI
+ */
+function initializeUserInfo() {
+    // Update user information in the navbar
+    const userName = document.getElementById('user-name');
+    const userAvatar = document.getElementById('user-avatar');
+    
+    if (userName && userAvatar) {
+        if (window.auth && window.auth.isAuthenticated()) {
+            // Get user info from localStorage
+            const userDisplayName = localStorage.getItem('user_display_name') || 'User';
+            const userPicture = localStorage.getItem('user_picture') || 'images/default-avatar.png';
+            
+            // Update the UI
+            userName.textContent = userDisplayName;
+            userAvatar.src = userPicture;
+            userAvatar.alt = userDisplayName;
+        } else {
+            // Default values for guest users
+            userName.textContent = 'Guest';
+            userAvatar.src = 'images/default-avatar.png';
+            userAvatar.alt = 'Guest';
+        }
+    }
 }
 
 /**

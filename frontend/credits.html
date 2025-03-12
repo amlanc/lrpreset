@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Purchase Credits - LR Preset</title>
+    <link rel="stylesheet" href="styles/style.css">
+    <link rel="stylesheet" href="styles/credits.css">
+</head>
+<body>
+    <div class="container">
+        <nav class="navbar">
+            <div class="navbar-left">
+                <a href="index.html" class="logo">LR Preset</a>
+            </div>
+            <div class="navbar-right">
+                <div id="credit-display" class="credit-display">
+                    <span class="credit-icon">💎</span>
+                    <span class="credit-balance">Loading...</span>
+                </div>
+                <div class="user-info">
+                    <img id="user-avatar" src="images/default-avatar.png" alt="User Avatar">
+                    <span id="user-name">Guest</span>
+                </div>
+            </div>
+        </nav>
+
+        <div class="content">
+            <div class="credits-container">
+                <h1>Purchase Credits</h1>
+                
+                <div class="credit-info">
+                    <h2>Your Current Balance</h2>
+                    <div class="balance-display">
+                        <span class="credit-icon large">💎</span>
+                        <span id="current-balance" class="credit-balance large">Loading...</span>
+                    </div>
+                </div>
+
+                <div class="purchase-container">
+                    <h2>Buy More Credits</h2>
+                    <p>Each credit allows you to create one AI-generated Lightroom preset.</p>
+                    
+                    <form id="purchase-form">
+                        <div class="form-group">
+                            <label for="credit-packs">Number of Credit Packs:</label>
+                            <select id="credit-packs" name="credit-packs">
+                                <option value="1">1 pack (10 credits)</option>
+                                <option value="2">2 packs (20 credits)</option>
+                                <option value="5">5 packs (50 credits)</option>
+                                <option value="10">10 packs (100 credits)</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Price:</label>
+                            <div class="price-display">
+                                <span id="total-price">$9.99</span>
+                            </div>
+                        </div>
+                        
+                        <div class="form-group eula-container">
+                            <input type="checkbox" id="eula-checkbox" name="eula-checkbox" required>
+                            <label for="eula-checkbox">
+                                I agree to the <a href="#" id="eula-link">End User License Agreement</a>
+                            </label>
+                        </div>
+                        
+                        <div id="error-container" class="error-container"></div>
+                        
+                        <button type="submit" class="btn btn-primary">Purchase Credits</button>
+                    </form>
+                </div>
+                
+                <div class="eula-modal" id="eula-modal">
+                    <div class="eula-modal-content">
+                        <span class="close">&times;</span>
+                        <h2>End User License Agreement</h2>
+                        <div class="eula-text">
+                            <h3>Credit Purchase Agreement</h3>
+                            <p>By purchasing credits, you agree to the following terms:</p>
+                            
+                            <h4>1. Credit Usage</h4>
+                            <p>Each credit allows you to create one AI-generated Lightroom preset. Credits are non-transferable and are tied to your account.</p>
+                            
+                            <h4>2. Refund Policy</h4>
+                            <p>All credit purchases are final. No refunds will be provided for purchased credits, whether used or unused.</p>
+                            
+                            <h4>3. Expiration</h4>
+                            <p>Credits do not expire and will remain in your account until used.</p>
+                            
+                            <h4>4. Service Availability</h4>
+                            <p>We strive to maintain continuous service availability, but we cannot guarantee uninterrupted access to the service. In the event of service interruption, your credits will be preserved.</p>
+                            
+                            <h4>5. Modifications</h4>
+                            <p>We reserve the right to modify the credit system, including pricing and functionality, at any time. Any changes will not affect previously purchased credits.</p>
+                        </div>
+                        <button id="accept-eula" class="btn btn-primary">I Accept</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <footer>
+            <p>&copy; 2025 LR Preset. All rights reserved.</p>
+        </footer>
+    </div>
+
+    <script src="js/main.js"></script>
+    <script src="js/credits.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize user info
+            initializeUserInfo();
+            
+            // Initialize the credits purchase page
+            if (window.creditSystem) {
+                window.creditSystem.initCreditsPurchasePage();
+            }
+            
+            // EULA modal functionality
+            const eulaModal = document.getElementById('eula-modal');
+            const eulaLink = document.getElementById('eula-link');
+            const closeBtn = document.querySelector('.eula-modal .close');
+            const acceptBtn = document.getElementById('accept-eula');
+            const eulaCheckbox = document.getElementById('eula-checkbox');
+            
+            eulaLink.addEventListener('click', function(e) {
+                e.preventDefault();
+                eulaModal.style.display = 'block';
+            });
+            
+            closeBtn.addEventListener('click', function() {
+                eulaModal.style.display = 'none';
+            });
+            
+            acceptBtn.addEventListener('click', function() {
+                eulaCheckbox.checked = true;
+                eulaModal.style.display = 'none';
+            });
+            
+            window.addEventListener('click', function(e) {
+                if (e.target === eulaModal) {
+                    eulaModal.style.display = 'none';
+                }
+            });
+        });
+    </script>
+</body>
+</html>

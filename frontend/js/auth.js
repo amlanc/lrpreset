@@ -21,6 +21,17 @@ function updateUI(isSignedIn, profile) {
     // Clear the auth section
     authSection.innerHTML = '';
     
+    // Check for admin status and update the navigation bar
+    if (isSignedIn) {
+        updateAdminNavLink(profile);
+    } else {
+        // Remove admin link if it exists
+        const adminLink = document.querySelector('.nav-links a[href="admin.html"]');
+        if (adminLink) {
+            adminLink.remove();
+        }
+    }
+    
     if (isSignedIn && profile) {
         // Create user profile container
         const userProfile = document.createElement('div');
@@ -132,6 +143,13 @@ function updateUI(isSignedIn, profile) {
         dashboardItem.innerHTML = '<i class="fas fa-th-large"></i>Dashboard';
         dropdownMenu.appendChild(dashboardItem);
         
+        // Add credits item
+        const creditsItem = document.createElement('a');
+        creditsItem.href = 'credits.html';
+        creditsItem.className = 'dropdown-item';
+        creditsItem.innerHTML = '<i class="fas fa-coins"></i>Credits';
+        dropdownMenu.appendChild(creditsItem);
+        
         const divider = document.createElement('div');
         divider.className = 'dropdown-divider';
         dropdownMenu.appendChild(divider);
@@ -189,10 +207,13 @@ function updateUI(isSignedIn, profile) {
 
 /**
  * Creates the Google Sign-In button
+ * @param {string} containerId - Optional ID of the container to place the button in
  */
-function createSignInButton() {
-    const authSection = document.getElementById('auth-section');
-    if (!authSection) {
+function createSignInButton(containerId) {
+    // Get the container - either auth-section or the specified container
+    const container = containerId ? document.getElementById(containerId) : document.getElementById('auth-section');
+    if (!container) {
+        console.error('Container not found for sign-in button:', containerId || 'auth-section');
         return;
     }
     
@@ -205,36 +226,37 @@ function createSignInButton() {
     // Create the Google Sign-In button container
     const buttonContainer = document.createElement('div');
     buttonContainer.id = 'g-signin-button';
+    buttonContainer.style.display = 'flex';
+    buttonContainer.style.justifyContent = 'center';
+    buttonContainer.style.margin = '20px 0';
     
-    // Create the button with official Google styling
+    // Create the standard Google sign-in button
     const signInButton = document.createElement('button');
     signInButton.className = 'gsi-material-button';
+    signInButton.addEventListener('click', initiateGoogleSignIn);
     
     // Create the button content wrapper
-    const buttonContent = document.createElement('div');
-    buttonContent.className = 'gsi-material-button-content-wrapper';
+    const contentWrapper = document.createElement('div');
+    contentWrapper.className = 'gsi-material-button-content-wrapper';
     
     // Add Google's official logo
-    const googleLogo = document.createElement('div');
-    googleLogo.className = 'gsi-material-button-icon';
-    googleLogo.innerHTML = '<svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" xmlns:xlink="http://www.w3.org/1999/xlink" style="display: block;"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path><path fill="none" d="M0 0h48v48H0z"></path></svg>';
+    const googleIcon = document.createElement('div');
+    googleIcon.className = 'gsi-material-button-icon';
+    googleIcon.innerHTML = '<svg viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path></svg>';
     
     // Add the button text
     const buttonText = document.createElement('span');
     buttonText.className = 'gsi-material-button-text';
     buttonText.textContent = 'Sign in with Google';
     
-    // Assemble the button content
-    buttonContent.appendChild(googleLogo);
-    buttonContent.appendChild(buttonText);
+    // Assemble the button
+    contentWrapper.appendChild(googleIcon);
+    contentWrapper.appendChild(buttonText);
+    signInButton.appendChild(contentWrapper);
     
-    // Add the content to the button
-    signInButton.appendChild(buttonContent);
-    signInButton.addEventListener('click', initiateGoogleSignIn);
-    
-    // Add the button to the container and then to the auth section
+    // Add the button to the container
     buttonContainer.appendChild(signInButton);
-    authSection.appendChild(buttonContainer);
+    container.appendChild(buttonContainer);
 }
 
 /**
@@ -242,6 +264,22 @@ function createSignInButton() {
  * @returns {Promise<Object>} Configuration object
  */
 function getConfig() {
+    // Check if getApiUrl is defined, otherwise define it locally
+    if (typeof getApiUrl !== 'function') {
+        // Define getApiUrl function locally if it's not available
+        window.getApiUrl = function(endpoint) {
+            // Make sure endpoint starts with a slash
+            if (!endpoint.startsWith('/')) {
+                endpoint = '/' + endpoint;
+            }
+            
+            // Get the base URL for API calls
+            const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+            const baseUrl = isLocalhost ? 'http://localhost:8000' : 'https://pic2preset.com';
+            return baseUrl + endpoint;
+        };
+    }
+    
     return fetch(getApiUrl('/config'))
         .then(response => {
             if (!response.ok) {
@@ -312,8 +350,9 @@ function handleGoogleSignIn(response) {
     // Decode the token to get user info
     const payload = JSON.parse(atob(idToken.split('.')[1]));
     
-    // Store the token
+    // Store the token and user ID
     localStorage.setItem('authToken', idToken);
+    localStorage.setItem('userId', payload.sub);
     
     // Update the UI
     googleUser = payload;
@@ -324,8 +363,9 @@ function handleGoogleSignIn(response) {
  * Signs out the current user
  */
 function signOut() {
-    // Clear auth token
+    // Clear auth token and user ID
     localStorage.removeItem('authToken');
+    localStorage.removeItem('userId');
     
     // Clear cached profile image
     localStorage.removeItem('cachedProfileImage');
@@ -518,6 +558,69 @@ function getUserId() {
     }
 }
 
+/**
+ * Checks if the current user has admin privileges
+ * @returns {Promise<boolean>} Promise resolving to true if user is admin, false otherwise
+ */
+function isAdmin() {
+    return new Promise((resolve) => {
+        if (!isAuthenticated()) {
+            console.log('User not authenticated, cannot be admin');
+            resolve(false);
+            return;
+        }
+        
+        // Get the user's email from the token
+        try {
+            const token = getAuthToken();
+            if (!token) {
+                console.log('No auth token found, cannot be admin');
+                resolve(false);
+                return;
+            }
+            
+            const payload = JSON.parse(atob(token.split('.')[1]));
+            const email = payload.email;
+            console.log('Checking admin status for email:', email);
+            
+            // For testing purposes - hardcode the admin email
+            if (email && email.toLowerCase() === 'amlanc@gmail.com') {
+                console.log('Admin email match found, user is admin');
+                resolve(true);
+                return;
+            }
+            
+            // Check with the server if this user is an admin
+            const apiUrl = getApiUrl('/api/user/is_admin');
+            console.log('Checking admin status at URL:', apiUrl);
+            
+            fetch(apiUrl, {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            })
+                .then(response => {
+                    console.log('Admin check response status:', response.status);
+                    if (!response.ok) {
+                        throw new Error(`Server returned ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Admin status check response:', data);
+                    resolve(data.is_admin === true);
+                })
+                .catch(error => {
+                    console.error('Error checking admin status:', error);
+                    resolve(false);
+                });
+        } catch (error) {
+            console.error('Error parsing token for admin check:', error);
+            resolve(false);
+        }
+    });
+}
+
 // Export functions for use in other modules
 window.auth = {
     updateUI,
@@ -532,8 +635,78 @@ window.auth = {
     getAuthToken,
     // Backward compatibility for older code still using getToken
     getToken: getAuthToken,
-    getUserId
+    getUserId,
+    isAdmin
 };
+
+/**
+ * Updates the navigation bar to show/hide the admin link based on user's admin status
+ * @param {Object} profile - User profile information
+ */
+function updateAdminNavLink(profile) {
+    if (!profile) {
+        console.log('No profile provided to updateAdminNavLink');
+        return;
+    }
+    
+    console.log('Updating admin nav link for user:', profile.name);
+    
+    // Check if the user is an admin
+    isAdmin().then(isAdmin => {
+        console.log('Is admin check result:', isAdmin);
+        
+        // Find the navigation links container - handle both nav structures
+        const navLinks = document.querySelector('.nav-links');
+        if (!navLinks) {
+            console.log('Nav links element not found');
+            return;
+        }
+        
+        console.log('Found nav-links element:', navLinks);
+        
+        // Remove existing admin link if it exists
+        const existingAdminLink = document.querySelector('.nav-links a[href="admin.html"]');
+        if (existingAdminLink) {
+            console.log('Removing existing admin link');
+            existingAdminLink.remove();
+        }
+        
+        // Add admin link if user is an admin
+        if (isAdmin) {
+            console.log('User is admin, adding admin link');
+            const dashboardLink = document.querySelector('.nav-links a[href="dashboard.html"]');
+            console.log('Dashboard link found:', !!dashboardLink);
+            
+            // Create admin link
+            const adminLink = document.createElement('a');
+            adminLink.href = 'admin.html';
+            adminLink.innerHTML = '<i class="fas fa-cog"></i> Admin';
+            
+            // Add active class if on admin page
+            if (window.location.pathname.endsWith('admin.html')) {
+                adminLink.classList.add('active');
+                // Remove active class from dashboard link if it exists
+                if (dashboardLink) {
+                    dashboardLink.classList.remove('active');
+                }
+            }
+            
+            // Insert admin link after dashboard link
+            if (dashboardLink && dashboardLink.nextSibling) {
+                console.log('Inserting admin link after dashboard link');
+                navLinks.insertBefore(adminLink, dashboardLink.nextSibling);
+            } else {
+                console.log('Appending admin link to nav links');
+                navLinks.appendChild(adminLink);
+            }
+            console.log('Admin link added successfully');
+        } else {
+            console.log('User is not an admin, no admin link added');
+        }
+    }).catch(error => {
+        console.error('Error checking admin status:', error);
+    });
+}
 
 // Initialize auth module
 startGoogleAuth();

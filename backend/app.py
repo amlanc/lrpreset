@@ -12,6 +12,7 @@ import xmp_generator
 import auth
 import payment
 import supabase_client
+import credit_system
 import json
 from dotenv import load_dotenv
 import requests
@@ -50,6 +51,9 @@ app.config['THUMBNAIL_CACHE_FOLDER'] = THUMBNAIL_CACHE_FOLDER
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(PRESET_FOLDER, exist_ok=True)
 os.makedirs(THUMBNAIL_CACHE_FOLDER, exist_ok=True)
+
+# Initialize credit system tables
+credit_system.initialize_credit_tables()
 
 # Set maximum content length for file uploads (164MB)
 app.config['MAX_CONTENT_LENGTH'] = 164 * 1024 * 1024
@@ -124,8 +128,9 @@ def require_auth(f):
                 # Token expired
                 raise ValueError('Token expired')
                 
-            # Add the user ID to the request
+            # Add the user ID and email to the request
             request.user_id = payload.get('sub')
+            request.user_email = payload.get('email')
             if not request.user_id:
                 # No user ID in token
                 raise ValueError('No user ID in token')
@@ -138,6 +143,44 @@ def require_auth(f):
             return jsonify({'error': 'Invalid authentication token'}), 401
             
     return decorated_function
+
+
+def require_admin(f):
+    """Decorator to require admin privileges for routes"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        # First check if user is authenticated (this should be handled by require_auth)
+        if not hasattr(request, 'user_email'):
+            return jsonify({'error': 'Authentication required'}), 401
+        
+        # Check if the user is an admin
+        try:
+            if not credit_system.is_admin_user(request.user_email):
+                return jsonify({'error': 'Admin privileges required'}), 403
+                
+            return f(*args, **kwargs)
+            
+        except Exception as e:
+            print(f"Admin authorization error: {e}")
+            return jsonify({'error': 'Admin authorization failed', 'details': str(e)}), 403
+            
+    return decorated_function
+
+
+@app.route('/api/user/is_admin', methods=['GET'])
+@require_auth
+def check_admin_status():
+    """Check if the current user has admin privileges"""
+    try:
+        email = request.user_email
+        is_admin = credit_system.is_admin_user(email)
+        
+        return jsonify({
+            'is_admin': is_admin
+        }), 200
+    except Exception as e:
+        print(f"Error checking admin status: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/upload', methods=['POST'])
 @require_auth
@@ -286,9 +329,26 @@ def download_preset(preset_id):
     """Download a preset XMP file after verifying purchase"""
     print(f"Download request for preset: {preset_id}")
     
-    # Get user ID from request
-    user_id = request.args.get('user_id', 'anonymous')
-    print(f"User ID: {user_id}")
+    # Get user ID and email from the JWT token
+    user_id = request.user_id
+    user_email = request.user_email
+    print(f"User ID from JWT: {user_id}, Email: {user_email}")
+    
+    # Check if this is a test account or admin user
+    is_test = user_email and credit_system.is_test_account(user_email)
+    is_admin = user_email and credit_system.is_admin_user(user_email)
+    
+    print(f"Is test account: {is_test}, Is admin: {is_admin}")
+    
+    # If not a test account or admin, check if the user has enough credits
+    if not is_test and not is_admin:
+        # Use a credit for this download
+        success, error = credit_system.use_credit(user_id, user_email)
+        if not success:
+            return jsonify({
+                'error': error or 'Insufficient credits',
+                'credits_required': True
+            }), 402  # 402 Payment Required
     
     # Get the preset from Supabase
     print(f"Getting preset from Supabase: {preset_id}")
@@ -460,12 +520,24 @@ def google_callback():
             return jsonify({'error': f'Failed to get user info: {error}'}), 400
             
         # Store the user in Supabase
-        # This is just a placeholder for now
+        stored_user = supabase_client.store_user(user_info['id'], user_info)
         
-        # Return the tokens and user info
+        # Check if this is a new user and add initial credit if needed
+        if stored_user and stored_user.get('is_new_user', False):
+            credit_system.add_credits_for_new_user(user_info['id'], user_info.get('email'))
+        
+        # Get user's credit balance
+        user_credits = credit_system.get_user_credits(user_info['id'])
+        is_test_account = user_info.get('email') and credit_system.is_test_account(user_info.get('email'))
+        
+        # Return the tokens, user info, and credit information
         return jsonify({
             'tokens': tokens,
-            'user': user_info
+            'user': user_info,
+            'credits': {
+                'balance': user_credits.get('credits_balance', 0) if user_credits else 0,
+                'is_test_account': is_test_account
+            }
         })
     except Exception as e:
         print(f"Error in Google callback: {e}")
@@ -867,7 +939,22 @@ def create_preset():
         print("Starting create_preset function")
         # Get user ID from the authenticated request
         user_id = request.user_id
-        print(f"User ID: {user_id}")
+        user_email = request.args.get('email') or request.user_email
+        print(f"User ID: {user_id}, Email: {user_email}")
+        
+        # Check if user has sufficient credits
+        is_test_account = user_email and credit_system.is_test_account(user_email)
+        
+        if not is_test_account:
+            # Check if user has enough credits
+            credit_result, error_message = credit_system.use_credit(user_id, user_email)
+            if not credit_result:
+                print(f"Insufficient credits for user {user_id}: {error_message}")
+                return jsonify({
+                    'error': 'Insufficient credits',
+                    'message': error_message or 'You need at least 1 credit to create a preset. Please purchase more credits.',
+                    'code': 'INSUFFICIENT_CREDITS'
+                }), 402  # 402 Payment Required
         
         # Check for request ID in headers to prevent duplicate processing
         request_id = request.headers.get('X-Request-ID')
@@ -1384,8 +1471,257 @@ def analyze_image():
         
         return jsonify(error_response), 500
 
+# Credit system endpoints
+@app.route('/api/credits', methods=['GET'])
+@require_auth
+def get_user_credit_balance():
+    """Get the current credit balance for the authenticated user"""
+    try:
+        # Get user ID from request
+        user_id = request.args.get('user_id')
+        user_email = request.args.get('email')
+        
+        if not user_id:
+            return jsonify({'error': 'User ID is required'}), 400
+            
+        # Check if this is a test account
+        is_test_account = user_email and credit_system.is_test_account(user_email)
+        
+        if is_test_account:
+            # Test accounts have unlimited credits
+            return jsonify({
+                'credits': {
+                    'balance': 'unlimited',
+                    'is_test_account': True
+                }
+            })
+            
+        # Get the user's credit balance
+        user_credits = credit_system.get_user_credits(user_id)
+        
+        return jsonify({
+            'credits': {
+                'balance': user_credits.get('credits_balance', 0) if user_credits else 0,
+                'total_earned': user_credits.get('total_credits_earned', 0) if user_credits else 0,
+                'last_update': user_credits.get('last_credit_update', '') if user_credits else '',
+                'is_test_account': False
+            }
+        })
+    except Exception as e:
+        print(f"Error getting credit balance: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/credits/purchase', methods=['POST'])
+@require_auth
+def purchase_credits():
+    """Create a checkout session for purchasing credits"""
+    try:
+        # Get user ID and number of credit packs from request
+        data = request.get_json()
+        user_id = data.get('user_id')
+        credit_packs = int(data.get('credit_packs', 1))
+        success_url = data.get('success_url')
+        cancel_url = data.get('cancel_url')
+        
+        if not user_id:
+            return jsonify({'error': 'User ID is required'}), 400
+            
+        # Create a checkout session
+        checkout_data = payment.create_credit_checkout_session(
+            user_id, 
+            credit_packs,
+            success_url,
+            cancel_url
+        )
+        
+        if 'error' in checkout_data:
+            return jsonify({'error': checkout_data['error']}), 400
+            
+        return jsonify(checkout_data), 200
+    except Exception as e:
+        print(f"Error creating credit purchase: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/credits/verify', methods=['GET'])
+@require_auth
+def verify_credit_purchase():
+    """Verify a credit purchase"""
+    try:
+        # Get the session ID from the request
+        session_id = request.args.get('session_id')
+        
+        if not session_id:
+            return jsonify({'error': 'Session ID is required'}), 400
+            
+        # Verify the payment
+        success, _ = payment.verify_payment(session_id)
+        
+        if not success:
+            return jsonify({'error': 'Payment verification failed'}), 400
+            
+        return jsonify({'success': True}), 200
+    except Exception as e:
+        print(f"Error verifying credit purchase: {e}")
+        return jsonify({'error': str(e)}), 500
+
+# Admin endpoints for test accounts
+@app.route('/api/admin/test-accounts', methods=['GET'])
+@require_auth
+@require_admin
+def get_test_accounts():
+    """Get all test accounts (admin only)"""
+    try:
+        test_accounts = credit_system.get_all_test_accounts()
+        
+        return jsonify({'test_accounts': test_accounts})
+    except Exception as e:
+        print(f"Error getting test accounts: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/admin/test-accounts', methods=['POST'])
+@require_auth
+@require_admin
+def add_test_account():
+    """Add a new test account (admin only)"""
+    try:
+        data = request.get_json()
+        email = data.get('email')
+        created_by = request.user_email
+        
+        if not email:
+            return jsonify({'error': 'Email is required'}), 400
+            
+        success = credit_system.add_test_account(email, created_by)
+        
+        if not success:
+            return jsonify({'error': 'Failed to add test account'}), 500
+            
+        return jsonify({'success': True, 'message': f'Added {email} as a test account'}), 200
+    except Exception as e:
+        print(f"Error adding test account: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/admin/test-accounts/<email>', methods=['DELETE'])
+@require_auth
+@require_admin
+def remove_test_account(email):
+    """Remove a test account (admin only)"""
+    try:
+        success = credit_system.remove_test_account(email)
+        
+        if not success:
+            return jsonify({'error': 'Failed to remove test account'}), 500
+            
+        return jsonify({'success': True, 'message': f'Removed {email} from test accounts'}), 200
+    except Exception as e:
+        print(f"Error removing test account: {e}")
+        return jsonify({'error': str(e)}), 500
+
+# Admin endpoints for user management
+@app.route('/api/admin/users', methods=['GET'])
+@require_auth
+@require_admin
+def get_all_users():
+    """Get all users with their information (admin only)"""
+    try:
+        include_credits = request.args.get('include_credits', 'true').lower() == 'true'
+        users = credit_system.get_all_users(include_credits=include_credits)
+        
+        return jsonify({'users': users})
+    except Exception as e:
+        print(f"Error getting all users: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/admin/users/<user_id>/credits', methods=['POST'])
+@require_auth
+@require_admin
+def admin_add_user_credits(user_id):
+    """Add credits to a user's account (admin only)"""
+    try:
+        data = request.get_json()
+        if not data or 'credits_amount' not in data:
+            return jsonify({'error': 'Credits amount is required'}), 400
+            
+        try:
+            credits_amount = int(data['credits_amount'])
+            if credits_amount <= 0:
+                return jsonify({'error': 'Credits amount must be positive'}), 400
+        except ValueError:
+            return jsonify({'error': 'Credits amount must be a number'}), 400
+            
+        success = credit_system.admin_add_credits(user_id, credits_amount, request.user_email)
+        if success:
+            return jsonify({
+                'success': True, 
+                'message': f'Added {credits_amount} credits to user {user_id}'
+            })
+        else:
+            return jsonify({'error': 'Failed to add credits'}), 500
+    except Exception as e:
+        print(f"Error adding admin credits: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/admin/admins', methods=['POST'])
+@require_auth
+@require_admin
+def add_admin_user():
+    """Add a new admin user (admin only)"""
+    try:
+        data = request.get_json()
+        if not data or 'email' not in data:
+            return jsonify({'error': 'Email is required'}), 400
+            
+        email = data['email']
+        
+        success = credit_system.add_admin_user(email, request.user_email)
+        if success:
+            return jsonify({'success': True, 'message': f'Added {email} as an admin user'})
+        else:
+            return jsonify({'error': 'Failed to add admin user'}), 500
+    except Exception as e:
+        print(f"Error adding admin user: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/admin/admins/<email>', methods=['DELETE'])
+@require_auth
+@require_admin
+def remove_admin_user(email):
+    """Remove an admin user (admin only)"""
+    try:
+        success = credit_system.remove_admin_user(email)
+        if success:
+            return jsonify({'success': True, 'message': f'Removed {email} from admin users'})
+        else:
+            return jsonify({'error': 'Failed to remove admin user'}), 500
+    except Exception as e:
+        print(f"Error removing admin user: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/admin/transactions', methods=['GET'])
+@require_auth
+@require_admin
+def get_transaction_history():
+    """Get transaction history for all users (admin only)"""
+    try:
+        try:
+            days = int(request.args.get('days', '30'))
+        except ValueError:
+            days = 30
+            
+        transaction_type = request.args.get('type')
+        
+        transactions = credit_system.get_transaction_history(days, transaction_type)
+        return jsonify({'transactions': transactions})
+    except Exception as e:
+        print(f"Error getting transaction history: {e}")
+        return jsonify({'error': str(e)}), 500
+
 # Run the application
 if __name__ == "__main__":
+    # Initialize credit system tables
+    print("Initializing credit system...")
+    credit_system.initialize_credit_tables()
+    
     # Run the app on localhost:8000
     print("Starting server on http://localhost:8000")
     app.run(host='localhost', port=8000, debug=True)
